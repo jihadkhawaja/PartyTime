@@ -1,0 +1,359 @@
+<Window x:Class="PartyTime.Views.ControlWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:PartyTime.Controls"
+        Title="PartyTime" Icon="/Assets/PartyTime-v2.ico"
+        Width="560" Height="704" MinWidth="510" MinHeight="510"
+        WindowStartupLocation="CenterScreen" Background="#100E19" Foreground="#F4EFFF"
+        FontFamily="Segoe UI" UseLayoutRounding="True">
+    <Window.Resources>
+        <SolidColorBrush x:Key="Muted" Color="#B9B0CB"/>
+        <SolidColorBrush x:Key="Accent" Color="#D4BDFF"/>
+        <SolidColorBrush x:Key="Panel" Color="#1A1525"/>
+        <Style x:Key="Eyebrow" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{StaticResource Accent}"/>
+        </Style>
+        <Style x:Key="HelpText" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Muted}"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style x:Key="Primary" TargetType="Button">
+            <Setter Property="Height" Value="41"/>
+            <Setter Property="Padding" Value="24,0"/>
+            <Setter Property="MinWidth" Value="124"/>
+            <Setter Property="Background" Value="#C6A8FF"/>
+            <Setter Property="Foreground" Value="#211132"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Fill" Padding="{TemplateBinding Padding}" Background="{TemplateBinding Background}" CornerRadius="9">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="True"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Fill" Property="Background" Value="#DDCAFF"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Fill" Property="Background" Value="#AF8FEB"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="Choice" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="#F4EFFF"/>
+            <Setter Property="Padding" Value="5,7"/>
+            <Setter Property="MinHeight" Value="34"/>
+            <Setter Property="Margin" Value="0,0,6,6"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Card" Padding="{TemplateBinding Padding}" CornerRadius="7"
+                                Background="#241D30" BorderBrush="#40364F" BorderThickness="1">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="True"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Card" Property="Background" Value="#372A49"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Card" Property="BorderBrush" Value="#BEA0FC"/>
+                                <Setter TargetName="Card" Property="Background" Value="#3B2854"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Card" Property="BorderBrush" Value="#E9D9FF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType="TabItem">
+            <Setter Property="Foreground" Value="{StaticResource Muted}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border x:Name="Tab" CornerRadius="8" Padding="17,8" Margin="0,0,5,6" Background="Transparent">
+                            <ContentPresenter ContentSource="Header" HorizontalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Tab" Property="Background" Value="#332347"/>
+                                <Setter Property="Foreground" Value="#F4E9FF"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType="TextBox">
+            <Setter Property="Background" Value="#211B2C"/>
+            <Setter Property="Foreground" Value="#F4EFFF"/>
+            <Setter Property="CaretBrush" Value="#F4EFFF"/>
+            <Setter Property="BorderBrush" Value="#524464"/>
+            <Setter Property="Padding" Value="9,5"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        <Style TargetType="CheckBox">
+            <Setter Property="Foreground" Value="#F4EFFF"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        <Style x:Key="Swatch" TargetType="Button">
+            <Setter Property="Width" Value="34"/>
+            <Setter Property="Height" Value="30"/>
+            <Setter Property="Margin" Value="0,0,7,0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Fill" Background="{TemplateBinding Background}" CornerRadius="6"
+                                BorderThickness="1" BorderBrush="#80798C"/>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Fill" Property="BorderBrush" Value="White"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="24,19,24,15">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Border CornerRadius="13" Padding="15,12" BorderThickness="1" BorderBrush="#46355E">
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                    <GradientStop Color="#342053" Offset="0"/>
+                    <GradientStop Color="#211A36" Offset="0.62"/>
+                    <GradientStop Color="#19283E" Offset="1"/>
+                </LinearGradientBrush>
+            </Border.Background>
+            <DockPanel>
+                <Border DockPanel.Dock="Right" Width="50" Height="50" CornerRadius="12" BorderThickness="1.4" Background="#2B2045">
+                    <Border.BorderBrush>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                            <GradientStop Color="#E48DFF" Offset="0"/>
+                            <GradientStop Color="#42E2FA" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Border.BorderBrush>
+                    <Path Data="M 7,24 L 14,24 18,16 23,32 29,19 33,24 40,24"
+                          Stroke="{StaticResource Accent}" StrokeThickness="2.8" StrokeLineJoin="Round"
+                          StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                </Border>
+                <StackPanel>
+                    <TextBlock Style="{StaticResource Eyebrow}" Text="DESKTOP VISUALIZER"/>
+                    <TextBlock Text="PartyTime" FontSize="30" FontWeight="Bold" Margin="-1,0,0,0"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <Grid Grid.Row="1" Margin="0,13,0,13">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <Ellipse x:Name="StatusDot" Width="8" Height="8" Fill="#8D829E" Margin="1,0,9,0"/>
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,14,0">
+                <TextBlock x:Name="StatusTitle" Text="Party is off" FontWeight="SemiBold" FontSize="14"/>
+                <TextBlock x:Name="StatusDetail" Text="Play music, then start the overlay."
+                           Foreground="{StaticResource Muted}" TextTrimming="CharacterEllipsis" Margin="0,3,0,0"/>
+            </StackPanel>
+            <Button Grid.Column="2" x:Name="PartyButton" Style="{StaticResource Primary}" Content="Start _party" Click="ToggleClicked"/>
+        </Grid>
+
+        <Border Grid.Row="2" Padding="10,8,10,10" Margin="0,0,0,13" CornerRadius="11" BorderThickness="1"
+                BorderBrush="#362A49" Background="{StaticResource Panel}">
+            <StackPanel>
+                <DockPanel Margin="1,0,1,7">
+                    <TextBlock DockPanel.Dock="Right" Text="Sample motion" Foreground="{StaticResource Muted}" FontSize="11"/>
+                    <TextBlock Text="STYLE PREVIEW" Style="{StaticResource Eyebrow}"/>
+                </DockPanel>
+                <controls:StylePreview x:Name="Preview" Height="100" IsHitTestVisible="False"/>
+            </StackPanel>
+        </Border>
+
+        <TabControl Grid.Row="3" Background="Transparent" BorderThickness="0" Padding="0" TabStripPlacement="Top">
+            <TabItem Header="Visuals">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="1,7,0,0">
+                        <TextBlock Text="VISUAL STYLE" Style="{StaticResource Eyebrow}" Margin="0,0,0,8"/>
+                        <UniformGrid x:Name="StyleChoices" Columns="5" Margin="0,0,-6,1">
+                            <RadioButton GroupName="VisualStyle" Tag="EdgeBars" Content="Edge bars" Style="{StaticResource Choice}" Checked="SettingsChanged"/>
+                            <RadioButton GroupName="VisualStyle" Tag="Orbit" Content="Orbit" Style="{StaticResource Choice}" Checked="SettingsChanged"/>
+                            <RadioButton GroupName="VisualStyle" Tag="CenterBars" Content="Center bars" Style="{StaticResource Choice}" Checked="SettingsChanged"/>
+                            <RadioButton GroupName="VisualStyle" Tag="Wave" Content="Wave" Style="{StaticResource Choice}" Checked="SettingsChanged"/>
+                            <RadioButton GroupName="VisualStyle" Tag="None" Content="None" Style="{StaticResource Choice}" Checked="SettingsChanged"/>
+                        </UniformGrid>
+                        <TextBlock x:Name="StyleDescription" Style="{StaticResource HelpText}"/>
+                        <Grid Margin="0,16,0,14">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="20"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                        <DockPanel Margin="0,0,0,6">
+                            <TextBlock x:Name="IntensityValue" DockPanel.Dock="Right" Foreground="{StaticResource Accent}" FontSize="12"/>
+                            <TextBlock Text="Intensity" FontWeight="SemiBold"/>
+                        </DockPanel>
+                        <Slider x:Name="IntensitySlider" Minimum="0" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True"
+                                IsMoveToPointEnabled="True" AutomationProperties.Name="Intensity" ToolTip="How bright the overlay appears." ValueChanged="SettingsChanged"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <DockPanel Margin="0,0,0,6">
+                            <TextBlock x:Name="SizeValue" DockPanel.Dock="Right" Foreground="{StaticResource Accent}" FontSize="12"/>
+                            <TextBlock Text="Size" FontWeight="SemiBold"/>
+                        </DockPanel>
+                        <Slider x:Name="SizeSlider" Minimum="60" Maximum="150" TickFrequency="5" IsSnapToTickEnabled="True"
+                                IsMoveToPointEnabled="True" AutomationProperties.Name="Size" ToolTip="How far the effect spreads across the screen." ValueChanged="SettingsChanged"/>
+                    </StackPanel>
+                        </Grid>
+                        <CheckBox x:Name="GlowToggle" Content="Edge glow and beat ripple" Checked="SettingsChanged" Unchecked="SettingsChanged"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+            <TabItem Header="Audio">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="1,7,0,0">
+                        <TextBlock Text="FREQUENCY FOCUS" Style="{StaticResource Eyebrow}" Margin="0,0,0,8"/>
+                        <UniformGrid x:Name="FocusChoices" Columns="3" Margin="0,0,-6,1">
+                            <RadioButton GroupName="FrequencyFocus" Tag="Full" Content="Full mix" Style="{StaticResource Choice}" Checked="SettingsChanged"/>
+                            <RadioButton GroupName="FrequencyFocus" Tag="Bass" Content="Bass" Style="{StaticResource Choice}" Checked="SettingsChanged"/>
+                            <RadioButton GroupName="FrequencyFocus" Tag="Vocals" Content="Vocals" Style="{StaticResource Choice}" Checked="SettingsChanged"/>
+                            <RadioButton GroupName="FrequencyFocus" Tag="Mids" Content="Mids" Style="{StaticResource Choice}" Checked="SettingsChanged"/>
+                            <RadioButton GroupName="FrequencyFocus" Tag="Treble" Content="Treble" Style="{StaticResource Choice}" Checked="SettingsChanged"/>
+                            <RadioButton GroupName="FrequencyFocus" Tag="Custom" Content="Custom" Style="{StaticResource Choice}" Checked="SettingsChanged"/>
+                        </UniformGrid>
+                        <TextBlock x:Name="FocusDescription" Style="{StaticResource HelpText}"/>
+                        <StackPanel x:Name="RangePanel" Visibility="Collapsed" Margin="0,9,0,0">
+                            <StackPanel Orientation="Horizontal">
+                                <Label Content="_From (Hz)" Target="{Binding ElementName=LowHzBox}" Foreground="{StaticResource Muted}" Padding="0,6,7,0"/>
+                                <TextBox x:Name="LowHzBox" Width="69" MaxLength="5" TextChanged="SettingsChanged" AutomationProperties.Name="Low frequency in hertz"/>
+                                <Label Content="_To (Hz)" Target="{Binding ElementName=HighHzBox}" Foreground="{StaticResource Muted}" Padding="13,6,7,0"/>
+                                <TextBox x:Name="HighHzBox" Width="69" MaxLength="5" TextChanged="SettingsChanged" AutomationProperties.Name="High frequency in hertz"/>
+                            </StackPanel>
+                            <TextBlock x:Name="RangeError" Text="Use 40–13,000 Hz with at least 50 Hz between values." Foreground="#FFC28C"
+                                       TextWrapping="Wrap" Margin="0,5,0,0" Visibility="Collapsed"/>
+                        </StackPanel>
+                        <Grid Margin="0,12,0,6">
+                    <StackPanel Grid.Column="0">
+                        <DockPanel Margin="0,0,0,6">
+                            <TextBlock x:Name="ResponseValue" DockPanel.Dock="Right" Foreground="{StaticResource Accent}" FontSize="12"/>
+                            <TextBlock Text="Response" FontWeight="SemiBold"/>
+                        </DockPanel>
+                        <Slider x:Name="ResponseSlider" Minimum="50" Maximum="175" TickFrequency="5" IsSnapToTickEnabled="True"
+                                IsMoveToPointEnabled="True" AutomationProperties.Name="Response" ToolTip="How strongly the overlay moves with the selected frequencies." ValueChanged="SettingsChanged"/>
+                    </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+            <TabItem Header="Colors">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="1,7,0,0">
+                        <TextBlock Text="COLOR SOURCE" Style="{StaticResource Eyebrow}" Margin="0,0,0,8"/>
+                        <UniformGrid x:Name="SourceChoices" Columns="3" Margin="0,0,-6,1">
+                            <RadioButton GroupName="ColorSource" Tag="Palette" Content="Palette" Style="{StaticResource Choice}" Checked="SettingsChanged"
+                                         ToolTip="Use the selected preset or your two custom colors."/>
+                            <RadioButton GroupName="ColorSource" Tag="Screen" Content="Screen" Style="{StaticResource Choice}" Checked="SettingsChanged"
+                                         ToolTip="Pick up colors from your primary display while the party is on."/>
+                            <RadioButton GroupName="ColorSource" Tag="Mix" Content="Mix" Style="{StaticResource Choice}" Checked="SettingsChanged"
+                                         ToolTip="Combine screen colors with your selected palette. Adjust the ratio with Screen blend."/>
+                        </UniformGrid>
+                        <TextBlock x:Name="SourceDescription" Style="{StaticResource HelpText}"/>
+                        <StackPanel x:Name="BlendPanel" Visibility="Collapsed" Margin="0,9,0,0">
+                            <DockPanel Margin="0,0,0,5">
+                                <TextBlock x:Name="BlendValue" DockPanel.Dock="Right" Foreground="{StaticResource Accent}" FontSize="12"/>
+                                <TextBlock Text="Screen blend" FontWeight="SemiBold"/>
+                            </DockPanel>
+                            <Slider x:Name="BlendSlider" Minimum="0" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True"
+                                    IsMoveToPointEnabled="True" AutomationProperties.Name="Screen blend" ValueChanged="SettingsChanged"
+                                    ToolTip="0% uses only the palette. 100% uses only screen colors."/>
+                        </StackPanel>
+                        <StackPanel x:Name="PalettePanel" Margin="0,11,0,0">
+                            <TextBlock Text="PALETTE" Style="{StaticResource Eyebrow}" Margin="0,0,0,7"/>
+                            <UniformGrid x:Name="PaletteChoices" Columns="4" Margin="0,0,-6,1">
+                                <RadioButton GroupName="ColorTheme" Tag="Neon" Content="Neon" Style="{StaticResource Choice}" Checked="SettingsChanged"
+                                             ToolTip="Electric purple and cyan with hot pink accents."/>
+                                <RadioButton GroupName="ColorTheme" Tag="Sunset" Content="Sunset" Style="{StaticResource Choice}" Checked="SettingsChanged"
+                                             ToolTip="Warm orange, gold, and pink."/>
+                                <RadioButton GroupName="ColorTheme" Tag="Aurora" Content="Aurora" Style="{StaticResource Choice}" Checked="SettingsChanged"
+                                             ToolTip="Cool greens, cyan, and blue."/>
+                                <RadioButton GroupName="ColorTheme" Tag="Custom" Content="Custom" Style="{StaticResource Choice}" Checked="SettingsChanged"
+                                             ToolTip="Choose two colors with the color picker or enter their hex codes."/>
+                            </UniformGrid>
+                            <Grid x:Name="CustomColorsPanel" Visibility="Collapsed" Margin="0,2,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,17,0">
+                                    <Button x:Name="FirstSwatch" Style="{StaticResource Swatch}" Click="PickColor"
+                                            AutomationProperties.Name="Pick primary color" ToolTip="Pick primary color"/>
+                                    <TextBox x:Name="FirstColorBox" Width="88" MaxLength="7" TextChanged="SettingsChanged"
+                                             AutomationProperties.Name="Primary color hex code" ToolTip="Primary color · #RRGGBB"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                    <Button x:Name="SecondSwatch" Style="{StaticResource Swatch}" Click="PickColor"
+                                            AutomationProperties.Name="Pick accent color" ToolTip="Pick accent color"/>
+                                    <TextBox x:Name="SecondColorBox" Width="88" MaxLength="7" TextChanged="SettingsChanged"
+                                             AutomationProperties.Name="Accent color hex code" ToolTip="Accent color · #RRGGBB"/>
+                                </StackPanel>
+                            </Grid>
+                            <TextBlock x:Name="ColorError" Text="Enter six hex digits, for example #B45CFF." Foreground="#FFC28C"
+                                       Margin="0,5,0,0" Visibility="Collapsed"/>
+                        </StackPanel>
+                        <CheckBox x:Name="AnimateToggle" Margin="0,9,0,0" Content="Cycle through colors"
+                                  Checked="SettingsChanged" Unchecked="SettingsChanged"
+                                  AutomationProperties.HelpText="{Binding Text, ElementName=CycleDescription}">
+                            <CheckBox.ToolTip>
+                                <TextBlock Width="280" TextWrapping="Wrap"
+                                           Text="Turn this on to move colors through the overlay and shift them forward on beats. With cycling off, the visuals still react to music and keep their color assignments. Screen or Mix can still pick up changing screen colors."/>
+                            </CheckBox.ToolTip>
+                        </CheckBox>
+                        <TextBlock x:Name="CycleDescription" Style="{StaticResource HelpText}" Margin="0,4,0,7"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+            <TabItem Header="App">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="1,7,0,0">
+                        <TextBlock Text="WINDOWS STARTUP" Style="{StaticResource Eyebrow}" Margin="0,0,0,8"/>
+                        <CheckBox x:Name="StartupToggle" Content="Start with Windows" Click="StartupClicked"
+                                  ToolTip="Launch PartyTime in the system tray when you sign in to Windows."
+                                  ToolTipService.ShowOnDisabled="True"
+                                  AutomationProperties.HelpText="{Binding Text, ElementName=StartupDescription}"/>
+                        <TextBlock x:Name="StartupDescription" Style="{StaticResource HelpText}" Margin="0,5,0,0"
+                                   Text="PartyTime opens in the system tray at sign-in. Start the overlay when you're ready."/>
+                        <TextBlock x:Name="StartupError" Foreground="#FFC28C" TextWrapping="Wrap" Margin="0,5,0,0"
+                                   Visibility="Collapsed"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+        </TabControl>
+
+        <DockPanel Grid.Row="4" Margin="0,10,0,0" LastChildFill="False">
+            <TextBlock x:Name="HotkeyLabel" Text="Ctrl + Alt + P  ·  Toggle overlay" Foreground="{StaticResource Accent}" FontSize="11"/>
+            <TextBlock DockPanel.Dock="Right" Text="Closes to the tray" Foreground="{StaticResource Muted}" FontSize="11"/>
+        </DockPanel>
+    </Grid>
+</Window>

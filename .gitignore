@@ -1,0 +1,18 @@
+# .NET build, publish, and test output
+bin/
+obj/
+artifacts/
+TestResults/
+*.binlog
+
+# Visual Studio local settings
+.vs/
+*.user
+*.suo
+*.rsuser
+*.userosscache
+*.sln.docstates
+
+# Windows Explorer metadata
+Thumbs.db
+Desktop.ini

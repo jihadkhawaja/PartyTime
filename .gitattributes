@@ -1,0 +1,6 @@
+# Use LF for text files across platforms.
+* text=auto eol=lf
+
+# Preserve image assets byte for byte.
+*.ico binary
+*.png binary
