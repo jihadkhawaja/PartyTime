@@ -1,37 +1,46 @@
 # PartyTime
 
+**A beat-synced Windows desktop visualizer with click-through overlays, edge glows, and spectrum effects.**
+
 ![PartyTime Windows desktop audio visualizer](Assets/GitHub-cover.png)
 
-PartyTime is a C#/.NET 10 Windows desktop visualizer. It listens to the mix on your default Windows playback device using WASAPI loopback and animates a click-through overlay on each display.
+PartyTime turns music, videos, and other system audio into a light show across your displays. It uses WASAPI loopback to listen to your default Windows playback device. The overlay passes clicks through to your apps, fades during silence, and reconnects when your default playback device changes.
 
-## Run
+## Quick start
 
-Open `PartyTime.exe` from the publish folder, or run this from the project directory with the .NET 10 SDK installed.
+To run from source, install the .NET 10 SDK on Windows.
 
 ```powershell
+git clone https://github.com/jihadkhawaja/PartyTime.git
+cd PartyTime
 dotnet run --project PartyTime.csproj
 ```
 
-1. Play music or a video through your default Windows output.
+1. Play music or a video through your default Windows audio output.
 2. Click **Start party** or press **Ctrl + Alt + P**.
-3. Use **Visuals**, **Audio**, and **Colors** to change the effect. The style preview uses sample motion so you can see changes with the overlay off.
-4. Use the same shortcut to stop. Closing the controls sends them to the notification area. Right-click the PartyTime icon and choose **Exit PartyTime** to quit. Your choices are saved locally.
-
-In **App**, turn on **Start with Windows** to launch PartyTime in the system tray when you sign in. It is off by default. If you move the executable, toggle the setting off and back on from the new location.
+3. Change the effect in **Visuals**, **Audio**, or **Colors**. The preview uses sample motion so you can try settings with the overlay off.
+4. Press the same shortcut to stop. Closing the controls sends PartyTime to the system tray. To quit, right-click its tray icon and choose **Exit PartyTime**.
 
 ## Customize
 
-- **Visuals** offers Edge Bars, Orbit, Center Bars, and Wave. Choose **None** with **Edge glow and beat ripple** enabled for a border-only effect. Adjust size and intensity to taste.
-- **Audio** offers Full Mix, Bass, Vocals, Mids, Treble, and a custom range from 40 to 13,000 Hz. The selected frequencies drive the spectrum and the beat effects. Vocals emphasizes the 300–3,400 Hz range. Use **Response** to change how strongly the visuals move.
-- **Colors** offers Neon, Sunset, Aurora, and a custom two-color palette. Click a swatch to pick a color, or enter its hex code. **Screen** samples your primary display, and **Mix** lets you blend those colors with a palette.
+| Tab | What you can change |
+| --- | --- |
+| **Visuals** | Choose Edge Bars, Orbit, Center Bars, Wave, or None. Set the size and intensity, and toggle the edge glow and beat ripple. |
+| **Audio** | Focus on Full Mix, Bass, Vocals, Mids, Treble, or a custom range from 40 to 13,000 Hz. Use **Response** to adjust how strongly the visuals move. |
+| **Colors** | Pick Neon, Sunset, Aurora, or two custom colors. **Screen** samples your primary display, and **Mix** blends those colors with your palette. |
+| **App** | Turn on **Start with Windows** to launch PartyTime in the system tray at sign-in. This is off by default. |
 
-**Cycle through colors** is on by default. It moves the current colors through the overlay and shifts them forward on beats. The visuals react to music either way, and screen colors still update in Screen or Mix mode when sampling is active.
+For a border-only effect, choose **Visuals → None** and enable **Edge glow and beat ripple**. To make the overlay follow voices more closely, choose **Audio → Vocals**, which emphasizes the 300–3,400 Hz range.
 
-Screen colors are sampled locally while the party is on in Screen or Mix mode. The sampler excludes PartyTime's overlay to prevent color feedback, so the effect can be hidden from Windows screenshots and screen recordings in those modes. Use Palette mode to keep it visible in captures.
+**Cycle through colors** is on by default. It moves colors through the overlay and shifts them forward on beats. Turning it off keeps each part assigned to the same color, while **Screen** and **Mix** can still pick up changing screen colors.
 
-The overlay covers each connected display and passes clicks through to your apps. It fades during silence and reconnects when the default playback device changes. Audio samples are analyzed in memory.
+Visual settings are saved in `%LOCALAPPDATA%\PartyTime\settings.json`. If you move the executable after enabling startup, toggle **Start with Windows** off and back on from the new location.
 
-PartyTime runs over the normal desktop, including browser fullscreen and borderless fullscreen windows. Exclusive fullscreen applications and the Windows secure desktop can bypass desktop overlays. Audio routed to another playback device is outside the captured mix.
+## Desktop and capture behavior
+
+- PartyTime works over the Windows desktop, including browser fullscreen and borderless fullscreen windows. Exclusive fullscreen apps and the Windows secure desktop can bypass desktop overlays.
+- Audio is analyzed in memory. Apps routed to a different playback device are outside the captured mix.
+- **Screen** and **Mix** sample colors locally while the overlay is active. They exclude the overlay from sampling to prevent color feedback, so it may be hidden from screenshots and recordings. Use **Palette** mode when you want it visible in captures.
 
 ## Project layout
 
@@ -45,7 +54,7 @@ PartyTime runs over the normal desktop, including browser fullscreen and borderl
 | `Interop/` | Win32 window placement, capture exclusion, the global hotkey, and Windows startup registration |
 | `Assets/` | App icons and project artwork |
 
-## Publish
+## Build a Windows executable
 
 ```powershell
 dotnet publish -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:DebugType=None -o artifacts/win-x64
