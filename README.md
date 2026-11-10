@@ -25,12 +25,14 @@ dotnet run --project PartyTime.csproj
 
 | Tab | What you can change |
 | --- | --- |
-| **Visuals** | Choose Edge Bars, Orbit, Center Bars, Wave, or None. Set the size and intensity, and toggle the edge glow and beat ripple. |
+| **Visuals** | Mix bars and waves, circles, borders, and overlay effects. Set the size and intensity, and choose 20, 30, 45, or 60 FPS or **Match display**. |
 | **Audio** | Focus on Full Mix, Bass, Vocals, Mids, Treble, or a custom range from 40 to 13,000 Hz. Use **Response** to adjust how strongly the visuals move. |
 | **Colors** | Pick Neon, Sunset, Aurora, or two custom colors. **Screen** samples your primary display, and **Mix** blends those colors with your palette. |
 | **App** | Turn on **Start with Windows** to launch PartyTime in the system tray at sign-in. This is off by default. |
 
-For a border-only effect, choose **Visuals → None** and enable **Edge glow and beat ripple**. To make the overlay follow voices more closely, choose **Audio → Vocals**, which emphasizes the 300–3,400 Hz range.
+Each visual layer has its own **None** option. Try **Edge bars**, **Radial wave**, **Double rail**, and **Sparks** together. For a border-only effect, pick a border and set the other three layers to **None**. To make the overlay follow voices more closely, choose **Audio → Vocals**, which emphasizes the 300–3,400 Hz range.
+
+The overlay defaults to 30 FPS. **Match display** targets the refresh rate Windows reports for each display and uses 30 FPS when the refresh rate is unavailable. Higher frame rates make motion smoother and use more graphics resources. All frame rates use full-resolution effects.
 
 **Cycle through colors** is on by default. It moves colors through the overlay and shifts them forward on beats. Turning it off keeps each part assigned to the same color, while **Screen** and **Mix** can still pick up changing screen colors.
 
@@ -56,11 +58,13 @@ Visual settings are saved in `%LOCALAPPDATA%\PartyTime\settings.json`. If you mo
 
 ## Build a Windows executable
 
+In VS Code, press **Ctrl + Shift + B** to run **Publish PartyTime (Windows x64)**. From PowerShell, run the equivalent command:
+
 ```powershell
-dotnet publish -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:DebugType=None -o artifacts/win-x64
+dotnet publish PartyTime.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -o artifacts/win-x64
 ```
 
-The published executable requires the .NET 10 Desktop Runtime for Windows x64.
+The self-contained executable is written to `artifacts/win-x64/PartyTime.exe`.
 
 ## License
 

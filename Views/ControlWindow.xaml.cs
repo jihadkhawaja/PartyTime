@@ -214,6 +214,10 @@ public partial class ControlWindow : Window
     private void RestoreControls()
     {
         SelectChoice(StyleChoices, _settings.Style);
+        SelectChoice(CircleChoices, _settings.Circle);
+        SelectChoice(BorderChoices, _settings.Border);
+        SelectChoice(OverlayChoices, _settings.Overlay);
+        SelectChoice(FrameRateChoices, _settings.FrameRate);
         SelectChoice(FocusChoices, _settings.Focus);
         SelectChoice(SourceChoices, _settings.ColorSource);
         SelectChoice(PaletteChoices, _settings.Theme);
@@ -221,7 +225,6 @@ public partial class ControlWindow : Window
         SizeSlider.Value = _settings.Size;
         ResponseSlider.Value = _settings.Response;
         BlendSlider.Value = _settings.ScreenBlend;
-        GlowToggle.IsChecked = _settings.EdgeGlow;
         AnimateToggle.IsChecked = _settings.AnimateColors;
         LowHzBox.Text = _settings.LowHz.ToString(CultureInfo.InvariantCulture);
         HighHzBox.Text = _settings.HighHz.ToString(CultureInfo.InvariantCulture);
@@ -251,9 +254,12 @@ public partial class ControlWindow : Window
         var next = _settings with
         {
             Style = ReadChoice<VisualStyle>(StyleChoices),
+            Circle = ReadChoice<CircleStyle>(CircleChoices),
+            Border = ReadChoice<BorderStyle>(BorderChoices),
+            Overlay = ReadChoice<OverlayStyle>(OverlayChoices),
+            FrameRate = ReadChoice<OverlayFrameRate>(FrameRateChoices),
             Intensity = (int)IntensitySlider.Value,
             Size = (int)SizeSlider.Value,
-            EdgeGlow = GlowToggle.IsChecked == true,
             Focus = ReadChoice<FrequencyFocus>(FocusChoices),
             LowHz = validRange ? low : _settings.LowHz,
             HighHz = validRange ? high : _settings.HighHz,
@@ -281,15 +287,6 @@ public partial class ControlWindow : Window
         SizeValue.Text = $"{_settings.Size}%";
         ResponseValue.Text = $"{_settings.Response}%";
         BlendValue.Text = $"{_settings.ScreenBlend}%";
-        StyleDescription.Text = _settings.Style switch
-        {
-            VisualStyle.Orbit => "A pulsing ring with radial spectrum bars in the center.",
-            VisualStyle.CenterBars => "A mirrored equalizer across the middle of the screen.",
-            VisualStyle.Wave => "A smooth spectrum ribbon across the middle of the screen.",
-            VisualStyle.None => _settings.EdgeGlow ? "Edge glow and beat ripple only." : "Turn on edge glow for a border-only effect.",
-            _ => "Spectrum bars along the top and bottom, with a clear center."
-        };
-
         RangePanel.Visibility = _settings.Focus == FrequencyFocus.Custom ? Visibility.Visible : Visibility.Collapsed;
         var range = _settings.GetRange();
         FocusDescription.Text = _settings.Focus switch

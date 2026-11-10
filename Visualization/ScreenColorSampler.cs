@@ -4,33 +4,71 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using System.Threading;
+using SharpGen.Runtime;
 using Color = System.Windows.Media.Color;
-using Screen = System.Windows.Forms.Screen;
 
 namespace PartyTime.Visualization;
 
 internal sealed partial class ScreenColorSampler : IDisposable
 {
-    private readonly Timer _timer;
-    private Color[]? _latest;
-    private int _sampling;
+    internal const int SampleWidth = 48;
+    internal const int SampleHeight = 28;
+    private const int Idle = 0, Sampling = 1, Disposed = 2;
 
-    public ScreenColorSampler()
-        => _timer = new Timer(_ => Sample(), null, TimeSpan.Zero, TimeSpan.FromMilliseconds(250));
+    private readonly Timer _timer;
+    private readonly Rectangle _bounds;
+    private GpuScreenCapture? _gpu;
+    private Color[]? _latest;
+    private long _lastGpuFailure;
+    private bool _tryGpu = true;
+    private int _state;
+
+    public ScreenColorSampler(Rectangle bounds)
+    {
+        _bounds = bounds;
+        _timer = new Timer(_ => Sample(), null, TimeSpan.Zero, TimeSpan.FromMilliseconds(250));
+    }
 
     public Color[]? Latest => Volatile.Read(ref _latest);
 
-    public void Dispose() => _timer.Dispose();
+    public void Dispose()
+    {
+        _timer.Dispose();
+        if (Interlocked.Exchange(ref _state, Disposed) == Idle)
+            _gpu?.Dispose();
+    }
 
     private void Sample()
     {
-        if (Interlocked.Exchange(ref _sampling, 1) != 0)
+        if (Interlocked.CompareExchange(ref _state, Sampling, Idle) != Idle)
             return;
 
         try
         {
-            if (Screen.PrimaryScreen is { } screen)
-                Volatile.Write(ref _latest, ReadPalette(screen.Bounds));
+            try
+            {
+                if (_gpu == null && _tryGpu
+                    && (_lastGpuFailure == 0 || Stopwatch.GetElapsedTime(_lastGpuFailure).TotalSeconds >= 5))
+                {
+                    _gpu = GpuScreenCapture.Open(_bounds);
+                    _tryGpu = _gpu != null;
+                }
+
+                if (_gpu != null)
+                {
+                    if (_gpu.TryReadPalette(out var palette))
+                        Volatile.Write(ref _latest, palette);
+                    return;
+                }
+            }
+            catch (SharpGenException ex)
+            {
+                Debug.WriteLine(ex);
+                _gpu?.Dispose();
+                _gpu = null;
+                _lastGpuFailure = Stopwatch.GetTimestamp();
+            }
+            Volatile.Write(ref _latest, ReadPalette(_bounds));
         }
         catch (Exception ex) when (ex is ExternalException or ArgumentException or InvalidOperationException)
         {
@@ -39,13 +77,14 @@ internal sealed partial class ScreenColorSampler : IDisposable
         }
         finally
         {
-            Volatile.Write(ref _sampling, 0);
+            if (Interlocked.CompareExchange(ref _state, Idle, Sampling) == Disposed)
+                _gpu?.Dispose();
         }
     }
 
-    internal static Color[]? ReadPalette(Rectangle bounds)
+    private static unsafe Color[]? ReadPalette(Rectangle bounds)
     {
-        using var sample = new Bitmap(48, 28, PixelFormat.Format32bppRgb);
+        using var sample = new Bitmap(SampleWidth, SampleHeight, PixelFormat.Format32bppRgb);
         using var graphics = Graphics.FromImage(sample);
         IntPtr screen = GetDC(IntPtr.Zero);
         if (screen == IntPtr.Zero)
@@ -65,27 +104,45 @@ internal sealed partial class ScreenColorSampler : IDisposable
         }
         finally { ReleaseDC(IntPtr.Zero, screen); }
 
+        var data = sample.LockBits(new Rectangle(0, 0, SampleWidth, SampleHeight), ImageLockMode.ReadOnly, PixelFormat.Format32bppRgb);
+        try
+        {
+            int stride = data.Stride;
+            var start = (byte*)data.Scan0 + Math.Min(0, stride) * (SampleHeight - 1);
+            return ExtractPalette(new ReadOnlySpan<byte>(start, Math.Abs(stride) * SampleHeight), stride);
+        }
+        finally
+        {
+            sample.UnlockBits(data);
+        }
+    }
+
+    internal static Color[]? ExtractPalette(ReadOnlySpan<byte> pixels, int stride)
+    {
         const int bucketCount = 13;
         Span<Bucket> buckets = stackalloc Bucket[4 * bucketCount];
         buckets.Clear();
-        for (int y = 0; y < sample.Height; y++)
+        int firstRow = -Math.Min(0, stride) * (SampleHeight - 1);
+        for (int y = 0; y < SampleHeight; y++)
         {
-            for (int x = 0; x < sample.Width; x++)
+            int row = firstRow + y * stride;
+            for (int x = 0; x < SampleWidth; x++)
             {
-                var pixel = sample.GetPixel(x, y);
-                int max = Math.Max(pixel.R, Math.Max(pixel.G, pixel.B));
-                int min = Math.Min(pixel.R, Math.Min(pixel.G, pixel.B));
+                int offset = row + x * 4;
+                byte blue = pixels[offset], green = pixels[offset + 1], red = pixels[offset + 2];
+                int max = Math.Max(red, Math.Max(green, blue));
+                int min = Math.Min(red, Math.Min(green, blue));
                 if (max < 24)
                     continue;
                 double chroma = (max - min) / 255.0;
-                int hue = chroma > 0.09 ? Math.Min(11, (int)(pixel.GetHue() / 30)) : 12;
-                int area = y < sample.Height / 2 ? (x < sample.Width / 2 ? 0 : 1) : (x < sample.Width / 2 ? 3 : 2);
+                int hue = chroma > 0.09 ? Math.Min(11, (int)(System.Drawing.Color.FromArgb(red, green, blue).GetHue() / 30)) : 12;
+                int area = y < SampleHeight / 2 ? (x < SampleWidth / 2 ? 0 : 1) : (x < SampleWidth / 2 ? 3 : 2);
                 double weight = (0.07 + chroma * 2.1) * max / 255;
                 ref var bucket = ref buckets[area * bucketCount + hue];
                 bucket.Weight += weight;
-                bucket.Red += pixel.R * weight;
-                bucket.Green += pixel.G * weight;
-                bucket.Blue += pixel.B * weight;
+                bucket.Red += red * weight;
+                bucket.Green += green * weight;
+                bucket.Blue += blue * weight;
             }
         }
 
