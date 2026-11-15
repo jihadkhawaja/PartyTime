@@ -50,7 +50,8 @@ internal sealed class GpuOverlayRenderer : IDisposable
         }
     }
 
-    public void Draw(int displayIndex, Scene? scene) => _surfaces[displayIndex].Draw(scene);
+    public void Draw(int displayIndex, Scene? scene, bool redrawBase, bool drawCursor, bool cacheBase)
+        => _surfaces[displayIndex].Draw(scene, redrawBase, drawCursor, cacheBase);
 
     public void Dispose()
     {
@@ -77,12 +78,14 @@ internal sealed class GpuOverlayRenderer : IDisposable
         private readonly IDCompositionVisual _visual = null!;
         private readonly ID2D1Bitmap1 _bitmap = null!;
         private bool _visible;
+        private readonly GpuSceneLayer _baseLayer;
 
         public Surface(GpuOverlayRenderer renderer, IDXGIFactory2 factory, OverlayWindow window, Rectangle bounds)
         {
             _renderer = renderer;
             _window = window;
             _bounds = bounds;
+            _baseLayer = new GpuSceneLayer(renderer._context, renderer._drawing, bounds.Width, bounds.Height);
             try
             {
                 _swapChain = factory.CreateSwapChainForComposition(renderer._device, new SwapChainDescription1
@@ -116,20 +119,31 @@ internal sealed class GpuOverlayRenderer : IDisposable
             }
         }
 
-        public void Draw(Scene? scene)
+        public void Draw(Scene? scene, bool redrawBase, bool drawCursor, bool cacheBase)
         {
-            if (scene is null && !_visible)
-                return;
-
             var context = _renderer._context;
             var dpi = VisualTreeHelper.GetDpi(_window);
-            context.Target = _bitmap;
             context.SetDpi((float)dpi.PixelsPerInchX, (float)dpi.PixelsPerInchY);
+            double width = _bounds.Width / dpi.DpiScaleX, height = _bounds.Height / dpi.DpiScaleY;
+            if (cacheBase)
+                _baseLayer.Update(scene, redrawBase || (!_baseLayer.Visible && scene?.BaseVisible == true), width, height);
+            else
+                _baseLayer.Clear();
+            bool baseVisible = cacheBase ? _baseLayer.Visible : scene?.BaseVisible == true;
+            if (!baseVisible && !drawCursor && !_visible)
+                return;
+            context.Target = _bitmap;
             context.BeginDraw();
             try
             {
                 context.Clear(new Color4(0, 0, 0, 0));
-                scene?.Draw(_renderer._drawing, _bounds.Width / dpi.DpiScaleX, _bounds.Height / dpi.DpiScaleY);
+                if (cacheBase)
+                    _baseLayer.Draw(width, height);
+                else if (baseVisible)
+                    scene!.DrawBase(_renderer._drawing, width, height);
+                if (drawCursor)
+                    scene?.DrawCursor(_renderer._drawing, width, height,
+                        new System.Windows.Point(_bounds.X, _bounds.Y), dpi.DpiScaleX, dpi.DpiScaleY);
             }
             finally
             {
@@ -143,12 +157,13 @@ internal sealed class GpuOverlayRenderer : IDisposable
             if (present == Vortice.DXGI.ResultCode.WasStillDrawing)
                 return;
             present.CheckError();
-            _visible = scene != null;
+            _visible = baseVisible || drawCursor;
         }
 
         public void Dispose()
         {
             _target?.SetRoot(null);
+            _baseLayer.Dispose();
             _bitmap?.Dispose();
             _visual?.Dispose();
             _target?.Dispose();

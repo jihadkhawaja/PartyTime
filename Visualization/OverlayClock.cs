@@ -16,6 +16,8 @@ internal sealed partial class OverlayClock : IDisposable
     private readonly Action _tick;
     private int _pending;
     private int _disposed;
+    private int _priority = (int)DispatcherPriority.Background;
+    public DispatcherPriority Priority { set => Volatile.Write(ref _priority, (int)value); }
 
     public OverlayClock(Action render)
     {
@@ -65,7 +67,7 @@ internal sealed partial class OverlayClock : IDisposable
     {
         // A settings change can rearm the timer before a previously queued frame runs.
         if (Volatile.Read(ref _disposed) == 0 && Interlocked.Exchange(ref _pending, 1) == 0)
-            _dispatcher.BeginInvoke(DispatcherPriority.Background, _tick);
+            _dispatcher.BeginInvoke((DispatcherPriority)Volatile.Read(ref _priority), _tick);
     }
 
     public void Dispose()

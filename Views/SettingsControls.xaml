@@ -156,6 +156,11 @@
                             <Setter TargetName="Box" Property="BorderBrush" Value="#D4BDFF"/>
                             <Setter TargetName="Check" Property="Visibility" Value="Visible"/>
                         </Trigger>
+                        <Trigger Property="IsChecked" Value="{x:Null}">
+                            <Setter TargetName="Box" Property="Background" Value="#D4BDFF"/>
+                            <Setter TargetName="Check" Property="Visibility" Value="Visible"/>
+                            <Setter TargetName="Check" Property="Data" Value="M 4,7 L 11,7"/>
+                        </Trigger>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Box" Property="BorderBrush" Value="#F1E4FF"/>
                         </Trigger>

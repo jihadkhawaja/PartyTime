@@ -20,16 +20,25 @@ internal sealed class AudioAnalyzer
     private readonly Complex[] _samples = new Complex[FftSize];
     private readonly Complex[] _spectrum = new Complex[FftSize];
     private readonly double[] _magnitudes = new double[BandEdges[^1]];
-    private readonly double[] _previousBands = new double[BandCount];
     private int _position;
     private int _samplesUntilAnalysis = FftSize;
     private long _lastPacket;
-    private long _lastBeat;
-    private float _beatStrength;
-    private double _peak;
-    private double _fluxAverage;
-    private double _driveAverage;
     private FrequencyRange _range = FrequencyRange.Full;
+    private SignalHistory _focused = new();
+    private SignalHistory _full = new();
+    private SignalHistory _low = new();
+    private SignalHistory _mid = new();
+    private SignalHistory _high = new();
+
+    private sealed class SignalHistory
+    {
+        public readonly double[] PreviousBands = new double[BandCount];
+        public long LastBeat;
+        public float BeatStrength;
+        public double Peak;
+        public double FluxAverage;
+        public double DriveAverage;
+    }
 
     static AudioAnalyzer()
     {
@@ -70,13 +79,14 @@ internal sealed class AudioAnalyzer
         if (changed || interrupted)
         {
             _range = range;
-            _lastBeat = 0;
-            _beatStrength = 0;
-            _fluxAverage = 0;
-            _driveAverage = 0;
-            Array.Clear(_previousBands);
-            if (changed)
-                _peak = 0;
+            _focused = new();
+            if (interrupted)
+            {
+                _full = new();
+                _low = new();
+                _mid = new();
+                _high = new();
+            }
             if (interrupted)
                 _samplesUntilAnalysis = FftSize;
         }
@@ -135,9 +145,19 @@ internal sealed class AudioAnalyzer
             _magnitudes[i] = Math.Sqrt(power) * (2.0 / FftSize);
         }
 
-        int firstBin = FirstBin(_range);
-        int endBin = EndBin(_range);
-        bool full = _range == FrequencyRange.Full;
+        var full = AnalyzeSignal(now, FrequencyRange.Full, _full, energy);
+        return new AudioFrame(now,
+            _range == FrequencyRange.Full ? full : AnalyzeSignal(now, _range, _focused, energy), full,
+            AnalyzeSignal(now, FrequencyRange.Bass, _low, energy),
+            AnalyzeSignal(now, FrequencyRange.Mids, _mid, energy),
+            AnalyzeSignal(now, FrequencyRange.Treble, _high, energy));
+    }
+
+    private AudioSignal AnalyzeSignal(long now, FrequencyRange range, SignalHistory history, double energy)
+    {
+        int firstBin = FirstBin(range);
+        int endBin = EndBin(range);
+        bool full = range == FrequencyRange.Full;
         double drive = 0;
         double focusedEnergy = 0;
         for (int i = firstBin; i < endBin; i++)
@@ -150,8 +170,8 @@ internal sealed class AudioAnalyzer
 
         // A Hann window spreads a sinusoid's power over nearby bins. This scale matches time-domain RMS.
         double rms = full ? Math.Sqrt(energy / FftSize) : Math.Sqrt(focusedEnergy / 3);
-        _peak = Math.Max(rms, _peak * 0.997);
-        double gain = Math.Clamp(0.21 / Math.Max(0.04, _peak), 0.6, 5);
+        history.Peak = Math.Max(rms, history.Peak * 0.997);
+        double gain = Math.Clamp(0.21 / Math.Max(0.04, history.Peak), 0.6, 5);
 
         double flux = 0;
         int activeBands = 0;
@@ -168,27 +188,27 @@ internal sealed class AudioAnalyzer
                 magnitude = Math.Max(magnitude, _magnitudes[j]);
 
             double weighted = Math.Log(1 + 30 * magnitude);
-            flux += Math.Max(0, weighted - _previousBands[i]) * (full && i < 8 ? 1.35 : 1);
-            _previousBands[i] = weighted;
+            flux += Math.Max(0, weighted - history.PreviousBands[i]) * (full && i < 8 ? 1.35 : 1);
+            history.PreviousBands[i] = weighted;
             if (rms >= 0.0004)
                 bands[i] = (float)Math.Clamp(Math.Log(1 + magnitude * gain * 36) / 2.6, 0, 1);
         }
 
         flux /= Math.Max(activeBands, 1);
-        double driveRise = Math.Max(0, drive - _driveAverage) * gain;
+        double driveRise = Math.Max(0, drive - history.DriveAverage) * gain;
         double onset = flux + 0.6 * driveRise;
-        if (rms > 0.004 && onset > Math.Max(0.065, _fluxAverage * 1.75 + 0.025)
-            && (_lastBeat == 0 || Stopwatch.GetElapsedTime(_lastBeat, now).TotalSeconds >= 0.17))
+        if (rms > 0.004 && onset > Math.Max(0.065, history.FluxAverage * 1.75 + 0.025)
+            && (history.LastBeat == 0 || Stopwatch.GetElapsedTime(history.LastBeat, now).TotalSeconds >= 0.17))
         {
-            _lastBeat = now;
-            _beatStrength = (float)Math.Clamp(0.45 + onset * 1.15, 0, 1);
+            history.LastBeat = now;
+            history.BeatStrength = (float)Math.Clamp(0.45 + onset * 1.15, 0, 1);
         }
 
-        _fluxAverage += (onset - _fluxAverage) * 0.045;
-        _driveAverage += (drive - _driveAverage) * 0.075;
-        return new AudioFrame(
+        history.FluxAverage += (onset - history.FluxAverage) * 0.045;
+        history.DriveAverage += (drive - history.DriveAverage) * 0.075;
+        return new AudioSignal(
             rms < 0.0004 ? 0 : (float)Math.Clamp(Math.Sqrt(rms * gain * 2.8), 0, 1),
             rms < 0.0004 ? 0 : (float)Math.Clamp(Math.Sqrt(drive * gain * 1.7), 0, 1),
-            bands, now, _lastBeat, _beatStrength, _range);
+            bands, history.LastBeat, history.BeatStrength, range);
     }
 }

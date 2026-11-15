@@ -46,6 +46,9 @@
                                 <Trigger Property="IsPressed" Value="True">
                                     <Setter TargetName="Fill" Property="Background" Value="#AF8FEB"/>
                                 </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="Fill" Property="Opacity" Value="0.45"/>
+                                </Trigger>
                             </ControlTemplate.Triggers>
                         </ControlTemplate>
                     </Setter.Value>
@@ -147,6 +150,60 @@
                 <Setter Property="Padding" Value="9,5"/>
                 <Setter Property="VerticalContentAlignment" Value="Center"/>
             </Style>
+            <Style x:Key="Selection" TargetType="ComboBox">
+                <Setter Property="Foreground" Value="#F4EFFF"/>
+                <Setter Property="Background" Value="#241D30"/>
+                <Setter Property="MinHeight" Value="32"/>
+                <Setter Property="Margin" Value="0,3,0,9"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ComboBox">
+                            <Grid>
+                                <ToggleButton Focusable="False" Background="{TemplateBinding Background}"
+                                              IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+                                    <ToggleButton.Template>
+                                        <ControlTemplate TargetType="ToggleButton">
+                                            <Border Background="{TemplateBinding Background}" BorderBrush="#66577C" BorderThickness="1" CornerRadius="6"/>
+                                        </ControlTemplate>
+                                    </ToggleButton.Template>
+                                </ToggleButton>
+                                <ContentPresenter x:Name="SelectionContent" Margin="10,5,26,5" VerticalAlignment="Center" IsHitTestVisible="False"
+                                                  Content="{TemplateBinding SelectionBoxItem}"/>
+                                <TextBlock Text="▾" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,10,0" IsHitTestVisible="False"/>
+                                <Popup x:Name="PART_Popup" IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Bottom" AllowsTransparency="True" Focusable="False">
+                                    <Border Background="#241D30" BorderBrush="#66577C" BorderThickness="1" MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}">
+                                        <ScrollViewer MaxHeight="240"><ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained"/></ScrollViewer>
+                                    </Border>
+                                </Popup>
+                            </Grid>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="SelectedIndex" Value="-1">
+                                    <Setter TargetName="SelectionContent" Property="Content" Value="Mixed"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+                <Setter Property="ItemContainerStyle">
+                    <Setter.Value>
+                        <Style TargetType="ComboBoxItem">
+                            <Setter Property="Foreground" Value="#F4EFFF"/>
+                            <Setter Property="Padding" Value="9,6"/>
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="ComboBoxItem">
+                                        <Border x:Name="Item" Background="Transparent" Padding="{TemplateBinding Padding}"><ContentPresenter/></Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsHighlighted" Value="True"><Setter TargetName="Item" Property="Background" Value="#493263"/></Trigger>
+                                            <Trigger Property="IsSelected" Value="True"><Setter TargetName="Item" Property="Background" Value="#392952"/></Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </Setter.Value>
+                </Setter>
+            </Style>
             <Style x:Key="Swatch" TargetType="Button">
                 <Setter Property="Width" Value="34"/>
                 <Setter Property="Height" Value="30"/>
@@ -239,7 +296,13 @@
             <TabItem Header="Visuals">
                 <ScrollViewer Style="{StaticResource SettingsScroll}">
                     <StackPanel>
-                        <TextBlock Text="Mix and match these four layers." Style="{StaticResource HelpText}" Margin="0,0,0,10"/>
+                        <TextBlock Text="VISUAL PRESETS" Style="{StaticResource Eyebrow}" Margin="0,0,0,7"/>
+                        <DockPanel Margin="0,0,0,7">
+                            <Button x:Name="ApplyPresetButton" DockPanel.Dock="Right" Content="Apply preset" Style="{StaticResource Primary}" Click="ApplyPresetClicked"/>
+                            <ComboBox x:Name="PresetPicker" Style="{StaticResource Selection}" Margin="0,0,9,0" SelectionChanged="PresetSelected" AutomationProperties.Name="Visual preset"/>
+                        </DockPanel>
+                        <TextBlock x:Name="PresetDescription" Style="{StaticResource HelpText}" Margin="0,0,0,12"/>
+                        <TextBlock Text="Mix these layers with shapes and cursor effects in Motion." Style="{StaticResource HelpText}" Margin="0,0,0,10"/>
                         <TextBlock Text="BARS &amp; WAVES" Style="{StaticResource Eyebrow}" Margin="0,0,0,6"/>
                         <UniformGrid x:Name="StyleChoices" Columns="4" Margin="0,0,-6,0">
                             <RadioButton GroupName="VisualStyle" Tag="None" Content="None" Style="{StaticResource Choice}" Checked="SettingsChanged"/>
@@ -319,7 +382,116 @@
                             <RadioButton GroupName="FrameRate" Tag="MatchDisplay" Content="Match display" Style="{StaticResource Choice}" Checked="SettingsChanged"
                                          ToolTip="Use the refresh rate Windows reports for each display."/>
                         </UniformGrid>
-                        <TextBlock Style="{StaticResource HelpText}" Text="Match display uses each screen’s refresh rate as the target. Higher frame rates make motion smoother and use more graphics resources."/>
+                        <TextBlock Style="{StaticResource HelpText}" Text="Music effects use this frame rate. Match display targets each screen’s refresh rate. Cursor trails update independently."/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+            <TabItem Header="Images">
+                <ScrollViewer Style="{StaticResource SettingsScroll}">
+                    <StackPanel>
+                        <TextBlock Text="YOUR OVERLAY IMAGES" Style="{StaticResource Eyebrow}" Margin="0,0,0,7"/>
+                        <TextBlock Text="Add PNG, JPEG, or BMP images as stickers, halos, or floating particles. Each image can follow its own audio range." Style="{StaticResource HelpText}" Margin="0,0,0,10"/>
+                        <WrapPanel Margin="0,0,0,8">
+                            <Button x:Name="AddImageButton" Content="Add image…" Style="{StaticResource Primary}" Click="AddImageClicked" Margin="0,0,8,0"/>
+                            <Button x:Name="RemoveImageButton" Content="Remove image" Style="{StaticResource Primary}" Click="RemoveImageClicked" Margin="0,0,8,0"/>
+                            <Button x:Name="SelectAllImagesButton" Content="Select all" Style="{StaticResource Primary}" Click="SelectAllImagesClicked"/>
+                        </WrapPanel>
+                        <TextBlock x:Name="ImageError" Foreground="#FFC28C" TextWrapping="Wrap" Margin="0,0,0,8" Visibility="Collapsed"/>
+                        <ListBox x:Name="ImageList" DisplayMemberPath="Name" SelectionMode="Extended" SelectionChanged="ImageSelected" PreviewKeyDown="ImageListKeyDown" MaxHeight="110" MinHeight="40"
+                                 Background="#211B2C" Foreground="#F4EFFF" BorderBrush="#524464" AutomationProperties.Name="Overlay images"/>
+                        <TextBlock Text="Ctrl+click to select several, Shift+click for a range, or use Select all." Style="{StaticResource HelpText}" Margin="0,5,0,0"/>
+                        <TextBlock x:Name="ImageSelectionSummary" Style="{StaticResource HelpText}" Margin="0,5,0,0"/>
+                        <StackPanel x:Name="ImageEditor" Visibility="Collapsed" Margin="0,12,0,0">
+                            <CheckBox x:Name="ImageEnabled" Content="Show this image" Checked="ImageSettingsChanged" Unchecked="ImageSettingsChanged" Margin="0,0,0,8"/>
+                            <TextBlock x:Name="ImageNameLabel" Text="Image name"/>
+                            <TextBox x:Name="ImageName" MaxLength="80" TextChanged="ImageSettingsChanged" Margin="0,3,0,9" AutomationProperties.Name="Image name"/>
+                            <TextBlock Text="IMAGE PREVIEW" Style="{StaticResource Eyebrow}" Margin="0,2,0,6"/>
+                            <Border Height="144" CornerRadius="6" BorderBrush="#524464" BorderThickness="1" ClipToBounds="True">
+                                <Border.Background>
+                                    <DrawingBrush TileMode="Tile" Viewport="0,0,16,16" ViewportUnits="Absolute">
+                                        <DrawingBrush.Drawing>
+                                            <DrawingGroup>
+                                                <GeometryDrawing Brush="#302839" Geometry="M0,0 H16 V16 H0 Z"/>
+                                                <GeometryDrawing Brush="#493F55" Geometry="M0,0 H8 V8 H0 Z M8,8 H16 V16 H8 Z"/>
+                                            </DrawingGroup>
+                                        </DrawingBrush.Drawing>
+                                    </DrawingBrush>
+                                </Border.Background>
+                                <Image x:Name="ImagePreview" Stretch="Uniform" MouseLeftButtonDown="ImagePreviewClicked"
+                                       AutomationProperties.Name="Image preview" ToolTip="Use Pick from image, then click a visible color in this preview."/>
+                            </Border>
+                            <TextBlock x:Name="ImagePreviewHint" Style="{StaticResource HelpText}" Margin="0,5,0,9"/>
+                            <CheckBox x:Name="ImageChromaKey" Content="Remove a color (chroma key)" Checked="ImageSettingsChanged" Unchecked="ImageSettingsChanged"/>
+                            <StackPanel x:Name="ChromaKeyControls" Margin="0,6,0,10">
+                                <TextBlock x:Name="ImageKeyColorMixed" Text="Key color · Mixed" Style="{StaticResource HelpText}" Visibility="Collapsed" Margin="0,0,0,5"/>
+                                <WrapPanel>
+                                    <Button x:Name="PickImageColorButton" Content="Pick from image" Style="{StaticResource Primary}" Click="PickImageColorClicked" Margin="0,0,9,5"/>
+                                    <Border x:Name="ImageKeySwatch" Width="28" Height="28" BorderBrush="#80798C" BorderThickness="1" CornerRadius="4" Margin="0,0,7,5"/>
+                                    <TextBox x:Name="ImageKeyColor" Width="88" MaxLength="7" TextChanged="ImageSettingsChanged" Margin="0,0,0,5" AutomationProperties.Name="Chroma key hex color"/>
+                                </WrapPanel>
+                                <TextBlock x:Name="ImageKeyColorError" Text="Enter six hex digits, for example #00FF00." Foreground="#FFC28C" Visibility="Collapsed" Margin="0,0,0,5"/>
+                                <TextBlock x:Name="ImageKeyToleranceLabel"/>
+                                <Slider x:Name="ImageKeyTolerance" Minimum="0" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="ImageSettingsChanged" AutomationProperties.Name="Chroma key tolerance"/>
+                                <TextBlock Text="Higher tolerance removes more similar colors. The original image is kept." Style="{StaticResource HelpText}"/>
+                            </StackPanel>
+                            <TextBlock Text="Placement"/>
+                            <ComboBox x:Name="ImagePlacement" Style="{StaticResource Selection}" SelectionChanged="ImageSettingsChanged" AutomationProperties.Name="Image placement"/>
+                            <TextBlock x:Name="ImagePlacementHelp" Style="{StaticResource HelpText}" Margin="0,0,0,8"/>
+                            <TextBlock Text="React to"/>
+                            <ComboBox x:Name="ImageReaction" Style="{StaticResource Selection}" SelectionChanged="ImageSettingsChanged" AutomationProperties.Name="Image audio range"/>
+                            <TextBlock x:Name="ImageSizeLabel" Margin="0,6,0,0"/>
+                            <Slider x:Name="ImageSize" Minimum="1" Maximum="50" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="ImageSettingsChanged" AutomationProperties.Name="Image size"/>
+                            <TextBlock x:Name="ImageOpacityLabel" Margin="0,6,0,0"/>
+                            <Slider x:Name="ImageOpacity" Minimum="0" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="ImageSettingsChanged" AutomationProperties.Name="Image opacity"/>
+                            <StackPanel x:Name="ImageCountPanel">
+                                <TextBlock x:Name="ImageCountLabel" Margin="0,6,0,0"/>
+                                <Slider x:Name="ImageCount" Minimum="1" Maximum="64" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="ImageSettingsChanged" AutomationProperties.Name="Image copies"/>
+                            </StackPanel>
+                            <StackPanel x:Name="ImagePositionPanel">
+                                <TextBlock x:Name="ImageXLabel" Margin="0,6,0,0"/>
+                                <Slider x:Name="ImageX" Minimum="0" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="ImageSettingsChanged" AutomationProperties.Name="Image horizontal position"/>
+                                <TextBlock x:Name="ImageYLabel" Margin="0,6,0,0"/>
+                                <Slider x:Name="ImageY" Minimum="0" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="ImageSettingsChanged" AutomationProperties.Name="Image vertical position"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+            <TabItem Header="Motion">
+                <ScrollViewer Style="{StaticResource SettingsScroll}">
+                    <StackPanel>
+                        <TextBlock Text="MOUSE CURSOR TRAIL" Style="{StaticResource Eyebrow}" Margin="0,0,0,7"/>
+                        <CheckBox x:Name="CursorTrailToggle" Content="Show cursor trail" Checked="SettingsChanged" Unchecked="SettingsChanged"/>
+                        <TextBlock Text="Follows your mouse at display refresh, up to 120 Hz, independently of the music effects’ FPS. Works during silence; audio adds pulses. The preview shows sample movement." Style="{StaticResource HelpText}" Margin="0,5,0,9"/>
+                        <StackPanel x:Name="CursorTrailPanel" Visibility="Collapsed">
+                            <TextBlock Text="Trail style"/>
+                            <ComboBox x:Name="CursorStylePicker" Style="{StaticResource Selection}" SelectionChanged="SettingsChanged" AutomationProperties.Name="Cursor trail style"/>
+                            <StackPanel x:Name="CursorShapePanel" Visibility="Collapsed">
+                                <TextBlock Text="Trail shape"/>
+                                <ComboBox x:Name="CursorShapePicker" Style="{StaticResource Selection}" SelectionChanged="SettingsChanged" AutomationProperties.Name="Cursor trail shape"/>
+                            </StackPanel>
+                            <TextBlock x:Name="CursorLengthLabel"/>
+                            <Slider x:Name="CursorLengthSlider" Minimum="150" Maximum="2000" TickFrequency="50" IsSnapToTickEnabled="True" ValueChanged="SettingsChanged" AutomationProperties.Name="Cursor trail lifetime"/>
+                            <TextBlock x:Name="CursorSizeLabel" Margin="0,7,0,0"/>
+                            <Slider x:Name="CursorSizeSlider" Minimum="4" Maximum="40" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="SettingsChanged" AutomationProperties.Name="Cursor trail size"/>
+                        </StackPanel>
+                        <Border Height="1" Background="{StaticResource PanelBorder}" Margin="0,12,0,12"/>
+                        <TextBlock Text="ANIMATED SHAPES" Style="{StaticResource Eyebrow}" Margin="0,0,0,7"/>
+                        <CheckBox x:Name="ShapesToggle" Content="Show animated shapes" Checked="SettingsChanged" Unchecked="SettingsChanged"/>
+                        <TextBlock Text="Add a separate layer of geometric shapes. Choose its frequency range in Audio." Style="{StaticResource HelpText}" Margin="0,5,0,9"/>
+                        <StackPanel x:Name="ShapesPanel" Visibility="Collapsed">
+                            <TextBlock Text="Shape"/>
+                            <ComboBox x:Name="ShapePicker" Style="{StaticResource Selection}" SelectionChanged="SettingsChanged" AutomationProperties.Name="Animated shape"/>
+                            <TextBlock Text="Motion"/>
+                            <ComboBox x:Name="ShapeMotionPicker" Style="{StaticResource Selection}" SelectionChanged="SettingsChanged" AutomationProperties.Name="Shape motion"/>
+                            <CheckBox x:Name="FilledShapesToggle" Content="Fill shapes" Checked="SettingsChanged" Unchecked="SettingsChanged" Margin="0,0,0,9"/>
+                            <TextBlock x:Name="ShapeCountLabel" Margin="0,7,0,0"/>
+                            <Slider x:Name="ShapeCountSlider" Minimum="4" Maximum="96" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="SettingsChanged" AutomationProperties.Name="Shapes"/>
+                            <TextBlock x:Name="ShapeSizeLabel" Margin="0,7,0,0"/>
+                            <Slider x:Name="ShapeSizeSlider" Minimum="1" Maximum="12" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="SettingsChanged" AutomationProperties.Name="Shape size"/>
+                            <TextBlock x:Name="ShapeOpacityLabel" Margin="0,7,0,0"/>
+                            <Slider x:Name="ShapeOpacitySlider" Minimum="0" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="SettingsChanged" AutomationProperties.Name="Shape opacity"/>
+                        </StackPanel>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
@@ -354,6 +526,20 @@
                             <Slider x:Name="ResponseSlider" Minimum="50" Maximum="175" TickFrequency="5" IsSnapToTickEnabled="True"
                                     IsMoveToPointEnabled="True" AutomationProperties.Name="Response" ToolTip="How strongly the overlay moves with the selected frequencies." ValueChanged="SettingsChanged"/>
                         </StackPanel>
+                        <TextBlock Text="AUDIO RANGE PER LAYER" Style="{StaticResource Eyebrow}" Margin="0,18,0,7"/>
+                        <TextBlock Text="Choose what drives each part. Follow focus uses the range above; low, mid, high, and full mix work independently of it. Choose each image's range in Images." Style="{StaticResource HelpText}" Margin="0,0,0,9"/>
+                        <TextBlock Text="Bars &amp; waves"/>
+                        <ComboBox x:Name="BarsReaction" Style="{StaticResource Selection}" SelectionChanged="SettingsChanged" AutomationProperties.Name="Bars &amp; waves audio range"/>
+                        <TextBlock Text="Circle"/>
+                        <ComboBox x:Name="CircleReaction" Style="{StaticResource Selection}" SelectionChanged="SettingsChanged" AutomationProperties.Name="Circle audio range"/>
+                        <TextBlock Text="Border"/>
+                        <ComboBox x:Name="BorderReaction" Style="{StaticResource Selection}" SelectionChanged="SettingsChanged" AutomationProperties.Name="Border audio range"/>
+                        <TextBlock Text="Overlay effects"/>
+                        <ComboBox x:Name="EffectsReaction" Style="{StaticResource Selection}" SelectionChanged="SettingsChanged" AutomationProperties.Name="Overlay effects audio range"/>
+                        <TextBlock Text="Animated shapes"/>
+                        <ComboBox x:Name="ShapesReaction" Style="{StaticResource Selection}" SelectionChanged="SettingsChanged" AutomationProperties.Name="Animated shapes audio range"/>
+                        <TextBlock Text="Cursor pulses"/>
+                        <ComboBox x:Name="CursorReaction" Style="{StaticResource Selection}" SelectionChanged="SettingsChanged" AutomationProperties.Name="Cursor pulses audio range"/>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>

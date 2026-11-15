@@ -30,6 +30,7 @@ internal sealed class OverlayWindow : Window
 
     public void Open(Rectangle bounds)
     {
+        Surface.DesktopOrigin = new Point(bounds.X, bounds.Y);
         IntPtr handle = new WindowInteropHelper(this).EnsureHandle();
         Desktop.MakeClickThrough(handle);
         Show();
@@ -42,35 +43,58 @@ internal sealed class OverlayWindow : Window
 
 internal sealed class OverlaySurface : FrameworkElement
 {
-    private readonly DrawingVisual _drawing = new();
+    private readonly DrawingVisual _baseDrawing = new();
+    private readonly DrawingVisual _cursorDrawing = new();
     private Scene? _scene;
+    private bool _baseVisible;
+    private bool _cursorVisible;
+    public Point DesktopOrigin { get; set; }
 
-    public OverlaySurface() => AddVisualChild(_drawing);
-
-    protected override int VisualChildrenCount => 1;
-
-    protected override Visual GetVisualChild(int index)
-        => index == 0 ? _drawing : throw new ArgumentOutOfRangeException(nameof(index));
-
-    public void ShowScene(Scene? scene)
+    public OverlaySurface()
     {
-        if (_scene is null && scene is null)
-            return;
+        ClipToBounds = true;
+        AddVisualChild(_baseDrawing);
+        AddVisualChild(_cursorDrawing);
+    }
+
+    protected override int VisualChildrenCount => 2;
+    protected override Visual GetVisualChild(int index) => index switch
+    {
+        0 => _baseDrawing, 1 => _cursorDrawing, _ => throw new ArgumentOutOfRangeException(nameof(index))
+    };
+
+    public void ShowScene(Scene? scene, bool redrawBase = true, bool drawCursor = true)
+    {
         _scene = scene;
-        Draw();
+        Draw(redrawBase, drawCursor);
     }
 
     protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)
     {
         base.OnRenderSizeChanged(sizeInfo);
-        if (_scene != null)
-            Draw();
+        Draw(true, _cursorVisible);
     }
 
-    private void Draw()
+    private void Draw(bool redrawBase, bool drawCursor)
     {
-        using var drawing = _drawing.RenderOpen();
-        if (_scene is { } scene && ActualWidth > 0 && ActualHeight > 0)
-            scene.Draw(drawing, ActualWidth, ActualHeight);
+        if (ActualWidth <= 0 || ActualHeight <= 0)
+            return;
+        if (redrawBase && (_baseVisible || _scene?.BaseVisible == true))
+        {
+            using var drawing = _baseDrawing.RenderOpen();
+            _baseVisible = _scene?.BaseVisible == true;
+            if (_baseVisible)
+                _scene!.DrawBase(new WpfSceneDrawing(drawing), ActualWidth, ActualHeight);
+        }
+        if (drawCursor || _cursorVisible)
+        {
+            using var drawing = _cursorDrawing.RenderOpen();
+            _cursorVisible = drawCursor && _scene?.HasCursorTrail == true;
+            if (_cursorVisible)
+            {
+                var dpi = VisualTreeHelper.GetDpi(this);
+                _scene!.DrawCursor(new WpfSceneDrawing(drawing), ActualWidth, ActualHeight, DesktopOrigin, dpi.DpiScaleX, dpi.DpiScaleY);
+            }
+        }
     }
 }

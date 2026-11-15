@@ -25,15 +25,20 @@ public partial class ControlWindow : Window
     private readonly Forms.ToolStripMenuItem _trayToggle;
     private readonly SystemAudio _audio;
     private readonly DispatcherTimer _saveTimer;
-    private VisualizerSettings _settings = VisualizerSettings.Load();
+    private VisualizerSettings _settings;
+    private readonly bool _persistSettings;
     private Overlay? _overlay;
     private HwndSource? _source;
     private bool _hotkeyRegistered;
     private bool _exiting;
     private bool _ready;
 
-    public ControlWindow()
+    public ControlWindow() : this(VisualizerSettings.Load()) { }
+
+    internal ControlWindow(VisualizerSettings settings, bool persistSettings = true)
     {
+        _settings = settings;
+        _persistSettings = persistSettings;
         InitializeComponent();
         _audio = new SystemAudio(Dispatcher);
         _audio.StatusChanged += SetAudioStatus;
@@ -43,6 +48,8 @@ public partial class ControlWindow : Window
         };
         _saveTimer.Tick += (_, _) => SaveSettings();
         Preview.GetScreenColors = () => _overlay?.ScreenColors;
+        InitializeCustomizationControls();
+        InitializeMotionControls();
         RestoreControls();
         RefreshDescriptions();
         ApplySettings();
@@ -230,6 +237,12 @@ public partial class ControlWindow : Window
         HighHzBox.Text = _settings.HighHz.ToString(CultureInfo.InvariantCulture);
         FirstColorBox.Text = _settings.FirstColor;
         SecondColorBox.Text = _settings.SecondColor;
+        BarsReaction.SelectedIndex = (int)_settings.BarsReaction;
+        CircleReaction.SelectedIndex = (int)_settings.CircleReaction;
+        BorderReaction.SelectedIndex = (int)_settings.BorderReaction;
+        EffectsReaction.SelectedIndex = (int)_settings.EffectsReaction;
+        RestoreMotionControls();
+        RefreshImageList();
     }
 
     private static void SelectChoice<T>(Panel choices, T selected) where T : struct, Enum
@@ -257,6 +270,24 @@ public partial class ControlWindow : Window
             Circle = ReadChoice<CircleStyle>(CircleChoices),
             Border = ReadChoice<BorderStyle>(BorderChoices),
             Overlay = ReadChoice<OverlayStyle>(OverlayChoices),
+            BarsReaction = (AudioReaction)BarsReaction.SelectedIndex,
+            CircleReaction = (AudioReaction)CircleReaction.SelectedIndex,
+            BorderReaction = (AudioReaction)BorderReaction.SelectedIndex,
+            EffectsReaction = (AudioReaction)EffectsReaction.SelectedIndex,
+            ShapesEnabled = ShapesToggle.IsChecked == true,
+            Shape = (ShapeKind)ShapePicker.SelectedIndex,
+            ShapeMotion = (ShapeMotion)ShapeMotionPicker.SelectedIndex,
+            FilledShapes = FilledShapesToggle.IsChecked == true,
+            ShapeCount = (int)ShapeCountSlider.Value,
+            ShapeSize = (int)ShapeSizeSlider.Value,
+            ShapeOpacity = (int)ShapeOpacitySlider.Value,
+            ShapesReaction = (AudioReaction)ShapesReaction.SelectedIndex,
+            CursorTrailEnabled = CursorTrailToggle.IsChecked == true,
+            CursorTrail = (CursorTrailStyle)CursorStylePicker.SelectedIndex,
+            CursorShape = (ShapeKind)CursorShapePicker.SelectedIndex,
+            CursorTrailLength = (int)CursorLengthSlider.Value,
+            CursorTrailSize = (int)CursorSizeSlider.Value,
+            CursorReaction = (AudioReaction)CursorReaction.SelectedIndex,
             FrameRate = ReadChoice<OverlayFrameRate>(FrameRateChoices),
             Intensity = (int)IntensitySlider.Value,
             Size = (int)SizeSlider.Value,
@@ -283,6 +314,7 @@ public partial class ControlWindow : Window
 
     private void RefreshDescriptions()
     {
+        RefreshMotionDescriptions();
         IntensityValue.Text = $"{_settings.Intensity}%";
         SizeValue.Text = $"{_settings.Size}%";
         ResponseValue.Text = $"{_settings.Response}%";
@@ -339,7 +371,8 @@ public partial class ControlWindow : Window
     private void SaveSettings()
     {
         _saveTimer.Stop();
-        _settings.Save();
+        if (_persistSettings)
+            _settings.Save();
     }
 
     private void PickColor(object sender, RoutedEventArgs e)

@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Linq;
 using Vector3 = System.Numerics.Vector3;
 using System.Windows;
 using System.Windows.Media;
@@ -17,7 +18,8 @@ internal sealed partial class Scene
         [Rgb(68, 255, 178), Rgb(31, 201, 249), Rgb(110, 117, 255), Rgb(133, 255, 119)]
     ];
 
-    private readonly float[] _bands = new float[AudioAnalyzer.BandCount];
+    private float[] _bands = new float[AudioAnalyzer.BandCount];
+    private readonly ReactionState[] _reactions = [new(), new(), new(), new(), new()];
     private readonly Color[] _colors = new Color[4];
     private double _level;
     private double _drive;
@@ -27,24 +29,24 @@ internal sealed partial class Scene
     private double Intensity => _settings.Intensity / 100.0;
     private double Size => _settings.Size / 100.0;
     private float _beatStrength;
-    private long _beatTimestamp;
     private VisualizerSettings _settings = new();
     private FrequencyRange _range = FrequencyRange.Full;
     private Color[] _stops = Palettes[0];
     private readonly Vector3[] _blendedStops = new Vector3[4];
     private bool _hasScreenColors;
+    public bool BaseVisible { get; private set; }
 
     public void ApplySettings(VisualizerSettings settings)
     {
         _settings = settings;
+        if (!settings.CursorTrailEnabled)
+            ClearCursorTrail();
+        ApplyImages(settings.Images);
         var range = settings.GetRange();
         if (range != _range)
         {
             _range = range;
-            _level = _drive = 0;
-            _beatStrength = 0;
-            _beatTimestamp = 0;
-            Array.Clear(_bands);
+            _reactions[(int)AudioReaction.Focus] = new();
         }
 
         if (settings.Theme == ColorTheme.Custom)
@@ -61,33 +63,27 @@ internal sealed partial class Scene
 
     public bool Update(AudioFrame audio, long now, double elapsed, Color[]? screenColors)
     {
-        bool fresh = audio.Range == _range && audio.Timestamp != 0
-            && Stopwatch.GetElapsedTime(audio.Timestamp, now).TotalSeconds < 0.14;
         double response = _settings.Response / 100.0;
-        _level = Follow(_level, fresh ? Math.Min(1, audio.Level * response) : 0, elapsed, 0.035, 0.18);
-        _drive = Follow(_drive, fresh ? Math.Min(1, audio.Drive * response) : 0, elapsed, 0.025, 0.15);
-        double bandAttack = 1 - Math.Exp(-elapsed / 0.045);
-        double bandRelease = 1 - Math.Exp(-elapsed / 0.14);
-        for (int i = 0; i < _bands.Length; i++)
+        bool fresh = audio.Timestamp != 0 && Stopwatch.GetElapsedTime(audio.Timestamp, now).TotalSeconds < 0.14;
+        bool beat = false;
+        for (int i = 0; i < _reactions.Length; i++)
         {
-            double current = _bands[i];
-            double target = fresh ? Math.Min(1, audio.Bands[i] * response) : 0;
-            _bands[i] = (float)(current + (target - current) * (target > current ? bandAttack : bandRelease));
+            var signal = i switch { 0 => audio.Focused, 1 => audio.Full, 2 => audio.Low, 3 => audio.Mid, _ => audio.High };
+            beat |= _reactions[i].Update(signal, now, elapsed, response,
+                fresh && (i != (int)AudioReaction.Focus || signal.Range == _range)) && i == (int)AudioReaction.Full;
         }
-
-        if (fresh && audio.BeatTimestamp != 0 && audio.BeatTimestamp != _beatTimestamp)
-        {
-            _beatTimestamp = audio.BeatTimestamp;
-            _beatStrength = audio.BeatStrength;
+        SelectReaction(AudioReaction.Full);
+        if (beat)
             _phase += 0.17 + _beatStrength * 0.14;
-        }
-
-        _beatAge = _beatTimestamp == 0 ? 1 : Stopwatch.GetElapsedTime(_beatTimestamp, now).TotalSeconds;
-        _pulse = Math.Min(1, _beatStrength * response) * Math.Exp(-Math.Max(0, _beatAge) / 0.12);
         _phase = (_phase + elapsed * (0.18 + _level * 0.45)) % 4;
-        bool hasLayers = _settings.Style != VisualStyle.None || _settings.Circle != CircleStyle.None
-            || _settings.Border != BorderStyle.None || _settings.Overlay != OverlayStyle.None;
-        if (Intensity <= 0 || Math.Max(_level, _pulse) < 0.014 || !hasLayers)
+        BaseVisible = Intensity > 0 && ((_settings.Style != VisualStyle.None && _reactions[(int)_settings.BarsReaction].Visible)
+            || (_settings.Circle != CircleStyle.None && _reactions[(int)_settings.CircleReaction].Visible)
+            || (_settings.Border != BorderStyle.None && _reactions[(int)_settings.BorderReaction].Visible)
+            || (_settings.Overlay != OverlayStyle.None && _reactions[(int)_settings.EffectsReaction].Visible)
+            || (_settings.ShapesEnabled && _settings.ShapeOpacity > 0 && _reactions[(int)_settings.ShapesReaction].Visible)
+            || _images.Any(image => image.Settings.Opacity > 0 && _reactions[(int)image.Settings.Reaction].Visible
+                && (image.Settings.Layout != ImageLayout.ReplaceDots || _settings.Circle == CircleStyle.DotHalo || _settings.Overlay == OverlayStyle.Sparks)));
+        if (!BaseVisible && !HasCursorTrail)
             return false;
 
         bool useScreen = screenColors != null && _settings.ColorSource != ColorSource.Palette;
@@ -121,35 +117,99 @@ internal sealed partial class Scene
         return true;
     }
 
-    public void Draw(DrawingContext drawing, double width, double height)
-        => Draw(new WpfSceneDrawing(drawing), width, height);
+    public void Draw(DrawingContext drawing, double width, double height, Point desktopOrigin = default, double dpiX = 1, double dpiY = 1)
+        => Draw(new WpfSceneDrawing(drawing), width, height, desktopOrigin, dpiX, dpiY);
 
-    public void Draw(ISceneDrawing drawing, double width, double height)
+    public void Draw(ISceneDrawing drawing, double width, double height, Point desktopOrigin = default, double dpiX = 1, double dpiY = 1)
+    {
+        DrawBase(drawing, width, height);
+        DrawCursor(drawing, width, height, desktopOrigin, dpiX, dpiY);
+    }
+
+    public void DrawBase(ISceneDrawing drawing, double width, double height)
     {
         double shortSide = Math.Min(width, height);
         if (shortSide <= 0)
             return;
+        drawing.SetImages(_imageSources);
 
         var center = new Point(width / 2, height / 2);
-        double depth = shortSide * Size * (0.045 + _drive * 0.067 + _pulse * 0.047);
-        DrawOverlay(drawing, width, height, shortSide, depth);
-        DrawBorder(drawing, width, height, shortSide, depth);
-
-        switch (_settings.Style)
+        if (SelectReaction(_settings.EffectsReaction))
         {
-            case VisualStyle.EdgeBars:
-                DrawSpectrum(drawing, width, height, depth, top: true, _colors[0]);
-                DrawSpectrum(drawing, width, height, depth, top: false, _colors[2]);
-                break;
-            case VisualStyle.CenterBars:
-                DrawCenterBars(drawing, width, height);
-                break;
-            case VisualStyle.Wave:
-                DrawWave(drawing, width, height);
-                break;
+            double depth = shortSide * Size * (0.045 + _drive * 0.067 + _pulse * 0.047);
+            DrawOverlay(drawing, width, height, shortSide, depth);
         }
+        if (SelectReaction(_settings.BorderReaction))
+        {
+            double depth = shortSide * Size * (0.045 + _drive * 0.067 + _pulse * 0.047);
+            DrawBorder(drawing, width, height, shortSide, depth);
+        }
+        if (SelectReaction(_settings.BarsReaction))
+        {
+            double depth = shortSide * Size * (0.045 + _drive * 0.067 + _pulse * 0.047);
+            switch (_settings.Style)
+            {
+                case VisualStyle.EdgeBars:
+                    DrawSpectrum(drawing, width, height, depth, top: true, _colors[0]);
+                    DrawSpectrum(drawing, width, height, depth, top: false, _colors[2]);
+                    break;
+                case VisualStyle.CenterBars:
+                    DrawCenterBars(drawing, width, height);
+                    break;
+                case VisualStyle.Wave:
+                    DrawWave(drawing, width, height);
+                    break;
+            }
+        }
+        if (SelectReaction(_settings.CircleReaction))
+            DrawCircle(drawing, center, shortSide * Size);
+        DrawShapes(drawing, width, height, shortSide);
+        DrawImages(drawing, width, height, shortSide);
+    }
 
-        DrawCircle(drawing, center, shortSide * Size);
+    public void DrawCursor(ISceneDrawing drawing, double width, double height, Point desktopOrigin = default, double dpiX = 1, double dpiY = 1)
+    {
+        if (HasCursorTrail && width > 0 && height > 0)
+            DrawCursorTrail(drawing, width, height, desktopOrigin, dpiX, dpiY);
+    }
+
+    private bool SelectReaction(AudioReaction reaction)
+    {
+        var state = _reactions[(int)reaction];
+        _level = state.Level;
+        _drive = state.Drive;
+        _pulse = state.Pulse;
+        _beatAge = state.BeatAge;
+        _beatStrength = state.BeatStrength;
+        _bands = state.Bands;
+        return state.Visible;
+    }
+
+    private sealed class ReactionState
+    {
+        public readonly float[] Bands = new float[AudioAnalyzer.BandCount];
+        public double Level, Drive, Pulse, BeatAge = 1;
+        public float BeatStrength;
+        private long _beatTimestamp;
+        public bool Visible => Math.Max(Level, Pulse) >= 0.014;
+
+        public bool Update(AudioSignal audio, long now, double elapsed, double response, bool fresh)
+        {
+            Level = Follow(Level, fresh ? Math.Min(1, audio.Level * response) : 0, elapsed, 0.035, 0.18);
+            Drive = Follow(Drive, fresh ? Math.Min(1, audio.Drive * response) : 0, elapsed, 0.025, 0.15);
+            for (int i = 0; i < Bands.Length; i++)
+                Bands[i] = (float)Follow(Bands[i], fresh ? Math.Min(1, audio.Bands[i] * response) : 0,
+                    elapsed, 0.045, 0.14);
+            bool beat = fresh && audio.BeatTimestamp != 0 && audio.BeatTimestamp != _beatTimestamp;
+            if (beat)
+            {
+                _beatTimestamp = audio.BeatTimestamp;
+                BeatStrength = audio.BeatStrength;
+            }
+            BeatAge = _beatTimestamp == 0 ? 1 : Stopwatch.GetElapsedTime(_beatTimestamp, now).TotalSeconds;
+            Pulse = Math.Min(1, BeatStrength * response) * Math.Exp(-Math.Max(0, BeatAge) / 0.12);
+            return beat;
+        }
     }
 
     private void DrawGlow(ISceneDrawing drawing, double width, double height, double depth)

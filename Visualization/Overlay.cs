@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Windows.Threading;
 using System.Windows.Media;
 using PartyTime.Audio;
 using PartyTime.Interop;
@@ -23,6 +24,7 @@ internal sealed class Overlay : IDisposable
     private OverlayFrameRate _frameRate = OverlayFrameRate.Fps30;
     private long _lastRender;
     private bool _useScreenColors;
+    private bool _trackCursor;
 
     public Overlay(SystemAudio audio)
     {
@@ -45,10 +47,19 @@ internal sealed class Overlay : IDisposable
     public void ApplySettings(VisualizerSettings settings)
     {
         _scene.ApplySettings(settings);
-        if (settings.FrameRate != _frameRate)
+        bool cursorChanged = _trackCursor != settings.CursorTrailEnabled;
+        _trackCursor = settings.CursorTrailEnabled;
+        _clock.Priority = _trackCursor ? DispatcherPriority.Input : DispatcherPriority.Background;
+        if (settings.FrameRate != _frameRate || cursorChanged)
         {
             _frameRate = settings.FrameRate;
             ConfigureFramePacing();
+        }
+        else
+        {
+            long now = Stopwatch.GetTimestamp();
+            foreach (var display in _displays) display.NextFrame = now;
+            _clock.Schedule(now);
         }
         bool useScreenColors = settings.ColorSource == ColorSource.Screen
             || (settings.ColorSource == ColorSource.Mix && settings.ScreenBlend > 0);
@@ -80,6 +91,7 @@ internal sealed class Overlay : IDisposable
 
     public void RebuildScreens()
     {
+        _scene.ClearCursorTrail();
         _gpu?.Dispose();
         _gpu = null;
         foreach (var display in _displays)
@@ -133,15 +145,17 @@ internal sealed class Overlay : IDisposable
 
     private void ConfigureFramePacing()
     {
-        var refreshRates = _frameRate == OverlayFrameRate.MatchDisplay ? DisplayRefreshRates.Read() : null;
+        var refreshRates = _frameRate == OverlayFrameRate.MatchDisplay || _trackCursor ? DisplayRefreshRates.Read() : null;
         long now = Stopwatch.GetTimestamp();
         foreach (var display in _displays)
         {
             double rate = _frameRate == OverlayFrameRate.MatchDisplay
                 ? refreshRates!.GetValueOrDefault(display.Screen.DeviceName, (int)OverlayFrameRate.Fps30)
                 : (int)_frameRate;
-            display.FramePeriod = Math.Max(1, (long)Math.Round(Stopwatch.Frequency / rate));
+            display.FramePeriod = FramePacing.Period(rate);
+            display.CursorPeriod = FramePacing.Period(FramePacing.CursorRate(refreshRates?.GetValueOrDefault(display.Screen.DeviceName, 60)));
             display.NextFrame = now;
+            display.NextCursorFrame = now;
         }
         _clock.Schedule(now);
     }
@@ -154,6 +168,8 @@ internal sealed class Overlay : IDisposable
             : 1.0 / (int)OverlayFrameRate.Fps30;
         _lastRender = now;
 
+        _scene.UpdatePointer(_trackCursor && Desktop.GetCursorPos(out var cursor)
+            ? new System.Windows.Point(cursor.X, cursor.Y) : null, now);
         bool visible = _scene.Update(_audio.Latest, now, elapsed, ScreenColors);
         Scene? scene = visible ? _scene : null;
         long nextFrame;
@@ -179,17 +195,27 @@ internal sealed class Overlay : IDisposable
         for (int i = 0; i < _displays.Length; i++)
         {
             var display = _displays[i];
-            if (scene is null || now >= display.NextFrame)
+            bool baseDue = now >= display.NextFrame;
+            bool cursorDue = _trackCursor && now >= display.NextCursorFrame;
+            var dpi = VisualTreeHelper.GetDpi(display.Window);
+            var bounds = display.Screen.Bounds;
+            bool cursorVisible = scene != null && scene.CursorIntersects(
+                new System.Windows.Rect(bounds.X, bounds.Y, bounds.Width, bounds.Height), Math.Max(dpi.DpiScaleX, dpi.DpiScaleY));
+            if (baseDue)
+                display.NextFrame = FramePacing.Advance(display.NextFrame, now, scene?.BaseVisible == true ? display.FramePeriod : IdleInterval);
+            if (cursorDue)
+                display.NextCursorFrame = FramePacing.Advance(display.NextCursorFrame, now, display.CursorPeriod);
+            if (baseDue || (cursorDue && (cursorVisible || display.CursorVisible)) || (!_trackCursor && display.CursorVisible))
             {
-                // Keep each display's cadence and skip missed frames when rendering runs late.
-                display.NextFrame = scene is null ? now + IdleInterval
-                    : display.NextFrame + ((now - display.NextFrame) / display.FramePeriod + 1) * display.FramePeriod;
                 if (_gpu != null)
-                    _gpu.Draw(i, scene);
+                    _gpu.Draw(i, scene, baseDue, cursorVisible, cacheBase: _trackCursor && (cursorVisible || display.CursorVisible));
                 else
-                    display.Window.Surface.ShowScene(scene);
+                    display.Window.Surface.ShowScene(scene, baseDue, cursorVisible);
+                display.CursorVisible = cursorVisible;
             }
             nextFrame = Math.Min(nextFrame, display.NextFrame);
+            if (_trackCursor)
+                nextFrame = Math.Min(nextFrame, display.NextCursorFrame);
         }
         return _displays.Length == 0 ? now + IdleInterval : nextFrame;
     }
@@ -200,5 +226,8 @@ internal sealed class Overlay : IDisposable
         public Screen Screen { get; } = screen;
         public long FramePeriod { get; set; }
         public long NextFrame { get; set; }
+        public long CursorPeriod { get; set; }
+        public long NextCursorFrame { get; set; }
+        public bool CursorVisible { get; set; }
     }
 }

@@ -12,6 +12,10 @@
     <ApplicationIcon>Assets\PartyTime-v2.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Remove="Tests\**\*.cs" />
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>PartyTime.Tests</_Parameter1>
+    </AssemblyAttribute>
     <PackageReference Include="NAudio.Wasapi" Version="3.3.0" />
     <PackageReference Include="Vortice.Direct2D1" Version="3.8.3" />
     <PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />

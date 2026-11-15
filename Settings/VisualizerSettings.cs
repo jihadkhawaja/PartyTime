@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Windows.Media;
 using PartyTime.Audio;
@@ -15,6 +16,29 @@ internal enum FrequencyFocus { Full, Bass, Vocals, Mids, Treble, Custom }
 internal enum ColorTheme { Neon, Sunset, Aurora, Custom }
 internal enum ColorSource { Palette, Screen, Mix }
 internal enum OverlayFrameRate { MatchDisplay = 0, Fps20 = 20, Fps30 = 30, Fps45 = 45, Fps60 = 60 }
+internal enum AudioReaction { Focus, Full, Low, Mid, High }
+internal enum ImageLayout { Sticker, Halo, Scatter, ReplaceDots }
+internal enum ShapeKind { Circle, Square, Triangle, Diamond, Star, Hexagon, Heart, Cross, Pentagon, Octagon, Mixed }
+internal enum ShapeMotion { Float, Orbit, Rain, Burst, Spiral }
+internal enum CursorTrailStyle { Glow, Ribbon, Shapes }
+
+internal sealed record OverlayImageSettings
+{
+    public string Id { get; init; } = Guid.NewGuid().ToString("N");
+    public string Name { get; init; } = "Image";
+    public string Path { get; init; } = "";
+    public bool Enabled { get; init; } = true;
+    public ImageLayout Layout { get; init; } = ImageLayout.Sticker;
+    public AudioReaction Reaction { get; init; } = AudioReaction.Focus;
+    public int Size { get; init; } = 10;
+    public int Opacity { get; init; } = 85;
+    public int Count { get; init; } = 16;
+    public int X { get; init; } = 50;
+    public int Y { get; init; } = 50;
+    public bool ChromaKeyEnabled { get; init; }
+    public string ChromaKeyColor { get; init; } = "#00FF00";
+    public int ChromaKeyTolerance { get; init; } = 20;
+}
 
 internal sealed record VisualizerSettings
 {
@@ -38,6 +62,25 @@ internal sealed record VisualizerSettings
     public string SecondColor { get; init; } = "#24DFFF";
     public bool AnimateColors { get; init; } = true;
     public OverlayFrameRate FrameRate { get; init; } = OverlayFrameRate.Fps30;
+    public AudioReaction BarsReaction { get; init; } = AudioReaction.Focus;
+    public AudioReaction CircleReaction { get; init; } = AudioReaction.Focus;
+    public AudioReaction BorderReaction { get; init; } = AudioReaction.Focus;
+    public AudioReaction EffectsReaction { get; init; } = AudioReaction.Focus;
+    public OverlayImageSettings[] Images { get; init; } = [];
+    public bool ShapesEnabled { get; init; }
+    public ShapeKind Shape { get; init; } = ShapeKind.Mixed;
+    public ShapeMotion ShapeMotion { get; init; } = ShapeMotion.Float;
+    public bool FilledShapes { get; init; }
+    public int ShapeCount { get; init; } = 24;
+    public int ShapeSize { get; init; } = 3;
+    public int ShapeOpacity { get; init; } = 65;
+    public AudioReaction ShapesReaction { get; init; } = AudioReaction.Mid;
+    public bool CursorTrailEnabled { get; init; }
+    public CursorTrailStyle CursorTrail { get; init; } = CursorTrailStyle.Glow;
+    public ShapeKind CursorShape { get; init; } = ShapeKind.Star;
+    public int CursorTrailLength { get; init; } = 650;
+    public int CursorTrailSize { get; init; } = 16;
+    public AudioReaction CursorReaction { get; init; } = AudioReaction.Full;
 
     public FrequencyRange GetRange() => Focus switch
     {
@@ -78,7 +121,7 @@ internal sealed record VisualizerSettings
         return new();
     }
 
-    private static VisualizerSettings ReadSettings(string json)
+    internal static VisualizerSettings ReadSettings(string json)
     {
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
@@ -121,9 +164,42 @@ internal sealed record VisualizerSettings
             ScreenBlend = Math.Clamp(saved.ScreenBlend, 0, 100),
             FirstColor = TryReadColor(saved.FirstColor, out var first) ? ColorHex(first) : defaults.FirstColor,
             SecondColor = TryReadColor(saved.SecondColor, out var second) ? ColorHex(second) : defaults.SecondColor,
-            FrameRate = Enum.IsDefined(saved.FrameRate) ? saved.FrameRate : defaults.FrameRate
+            FrameRate = Enum.IsDefined(saved.FrameRate) ? saved.FrameRate : defaults.FrameRate,
+            BarsReaction = ValidReaction(saved.BarsReaction),
+            CircleReaction = ValidReaction(saved.CircleReaction),
+            BorderReaction = ValidReaction(saved.BorderReaction),
+            EffectsReaction = ValidReaction(saved.EffectsReaction),
+            Shape = Enum.IsDefined(saved.Shape) ? saved.Shape : defaults.Shape,
+            ShapeMotion = Enum.IsDefined(saved.ShapeMotion) ? saved.ShapeMotion : defaults.ShapeMotion,
+            ShapeCount = Math.Clamp(saved.ShapeCount, 4, 96),
+            ShapeSize = Math.Clamp(saved.ShapeSize, 1, 12),
+            ShapeOpacity = Math.Clamp(saved.ShapeOpacity, 0, 100),
+            ShapesReaction = ValidReaction(saved.ShapesReaction),
+            CursorTrail = Enum.IsDefined(saved.CursorTrail) ? saved.CursorTrail : defaults.CursorTrail,
+            CursorShape = Enum.IsDefined(saved.CursorShape) ? saved.CursorShape : defaults.CursorShape,
+            CursorTrailLength = Math.Clamp(saved.CursorTrailLength, 150, 2000),
+            CursorTrailSize = Math.Clamp(saved.CursorTrailSize, 4, 40),
+            CursorReaction = ValidReaction(saved.CursorReaction),
+            Images = (saved.Images ?? []).Where(image => image != null).Take(16).Select(image => image with
+            {
+                Id = Guid.TryParseExact(image.Id, "N", out _) ? image.Id : Guid.NewGuid().ToString("N"),
+                Name = string.IsNullOrWhiteSpace(image.Name) ? "Image" : image.Name,
+                Path = image.Path ?? "",
+                Layout = Enum.IsDefined(image.Layout) ? image.Layout : ImageLayout.Sticker,
+                Reaction = ValidReaction(image.Reaction),
+                Size = Math.Clamp(image.Size, 1, 50),
+                Opacity = Math.Clamp(image.Opacity, 0, 100),
+                Count = Math.Clamp(image.Count, 1, 64),
+                X = Math.Clamp(image.X, 0, 100),
+                Y = Math.Clamp(image.Y, 0, 100),
+                ChromaKeyColor = TryReadColor(image.ChromaKeyColor, out var key) ? ColorHex(key) : "#00FF00",
+                ChromaKeyTolerance = Math.Clamp(image.ChromaKeyTolerance, 0, 100)
+            }).ToArray()
         };
     }
+
+    private static AudioReaction ValidReaction(AudioReaction reaction)
+        => Enum.IsDefined(reaction) ? reaction : AudioReaction.Focus;
 
     public void Save()
     {

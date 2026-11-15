@@ -17,7 +17,6 @@ public sealed class StylePreview : FrameworkElement
     private static readonly Brush MockContent = new SolidColorBrush(Color.FromRgb(58, 54, 82));
 
     private readonly Scene _scene = new();
-    private readonly float[] _bands = new float[AudioAnalyzer.BandCount];
     private readonly DispatcherTimer _timer;
     private readonly long _start = Stopwatch.GetTimestamp();
     private FrequencyRange _range = FrequencyRange.Full;
@@ -61,13 +60,22 @@ public sealed class StylePreview : FrameworkElement
         double beat = Math.Floor(seconds / beatLength) * beatLength;
         long beatTime = _start + (long)(beat * Stopwatch.Frequency);
         double hit = Math.Exp(-(seconds - beat) * 12);
-        for (int i = 0; i < _bands.Length; i++)
+        AudioSignal Sample(FrequencyRange range)
         {
-            double movement = 0.5 + Math.Sin(seconds * 5.4 - i * 0.47) * 0.25 + Math.Sin(seconds * 9 + i * 1.61) * 0.17;
-            _bands[i] = AudioAnalyzer.IncludesBand(i, _range) ? (float)Math.Min(1, movement + hit * 0.28) : 0;
+            var bands = new float[AudioAnalyzer.BandCount];
+            for (int i = 0; i < bands.Length; i++)
+            {
+                double movement = 0.5 + Math.Sin(seconds * 5.4 - i * 0.47) * 0.25 + Math.Sin(seconds * 9 + i * 1.61) * 0.17;
+                bands[i] = AudioAnalyzer.IncludesBand(i, range) ? (float)Math.Min(1, movement + hit * 0.28) : 0;
+            }
+            return new AudioSignal((float)(0.52 + hit * 0.21), (float)(0.24 + hit * 0.62),
+                bands, beatTime, 0.72f, range);
         }
-        var frame = new AudioFrame((float)(0.52 + hit * 0.21), (float)(0.24 + hit * 0.62),
-            _bands, now, beatTime, 0.72f, _range);
+        var frame = new AudioFrame(now, Sample(_range), Sample(FrequencyRange.Full),
+            Sample(FrequencyRange.Bass), Sample(FrequencyRange.Mids), Sample(FrequencyRange.Treble));
+        _scene.UpdatePointer(ActualWidth > 0 && ActualHeight > 0
+            ? new Point(ActualWidth * (0.5 + Math.Sin(seconds * 1.7) * 0.32), ActualHeight * (0.5 + Math.Cos(seconds * 2.3) * 0.28))
+            : null, now);
         _showScene = _scene.Update(frame, now, _timer.Interval.TotalSeconds, GetScreenColors?.Invoke());
         InvalidateVisual();
     }

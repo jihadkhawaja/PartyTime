@@ -55,4 +55,15 @@ internal static partial class Desktop
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool UnregisterHotKey(IntPtr window, int id);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool GetCursorPos(out CursorPoint point);
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct CursorPoint
+    {
+        public int X;
+        public int Y;
+    }
 }

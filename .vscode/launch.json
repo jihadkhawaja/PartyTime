@@ -1,0 +1,17 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug PartyTime",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "Build PartyTime (Debug)",
+      "program": "${workspaceFolder}/bin/Debug/net10.0-windows/PartyTime.dll",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "console": "internalConsole",
+      "stopAtEntry": false,
+      "justMyCode": true
+    }
+  ]
+}

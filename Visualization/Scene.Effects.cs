@@ -138,6 +138,8 @@ internal sealed partial class Scene
     {
         double radius = unit * (0.15 + _drive * 0.03 + _pulse * 0.05);
         drawing.DrawEllipse(null, new Pen(SpectrumBrush(opacity * 0.30), Math.Clamp(unit * 0.002, 0.8, 3)), center, radius);
+        if (HasDotReplacement)
+            return;
         for (int color = 0; color < _colors.Length; color++)
         {
             var brush = new SolidColorBrush(Alpha(_colors[color], opacity));
@@ -193,6 +195,8 @@ internal sealed partial class Scene
 
     private void DrawSparks(ISceneDrawing drawing, double width, double height, double unit, double opacity)
     {
+        if (HasDotReplacement)
+            return;
         double phase = Math.Tau * _phase / 4;
         for (int color = 0; color < _colors.Length; color++)
         {
