@@ -69,7 +69,7 @@ Shared halos and floating layouts interleave images in list order, reserve separ
 
 On Windows and macOS, screen colors are sampled from the primary display. Screenshots are captured per display, held for 1–8 beats, and faded over 150–2,000 ms. Intermediate beats renew opacity and zoom; 0% zoom keeps the screenshot still. **Normal**, **Additive**, **Screen**, **Multiply**, **Difference**, and **Negative** blends are available. The Screen tab previews the primary display.
 
-Capture and blending run off the UI thread, with screenshots scaled to at most 960 pixels on the longer side. Windows uses native GDI capture; macOS uses ScreenCaptureKit with PartyTime excluded. Capture permissions, protected content, and desktop restrictions can make capture unavailable. Status messages explain capture failures; other effects remain usable.
+Capture runs off the UI thread, with screenshots scaled to at most 960 pixels on the longer side. Windows prefers DXGI desktop duplication and GPU downscaling, with a GDI fallback; macOS uses ScreenCaptureKit with PartyTime excluded. Blends, zoom, fades, and the live Screen preview use the renderer. Live desktop blends capture at up to 60 FPS on the hardware path; held Normal/Negative samples avoid repeated capture, and unchanged desktop frames reuse their uploaded image. Capture permissions, protected content, and desktop restrictions can make capture unavailable. Status messages explain capture failures; other effects remain usable.
 
 Screenshots and audio stay in memory and are cleared when stopped. PartyTime does not upload them. While screen effects are active, Windows excludes the controls and overlays from screenshots and recordings to avoid feedback. For visible recordings, choose **Palette** and disable screen samples.
 
@@ -117,6 +117,12 @@ The checks use Avalonia Headless with the real Skia renderer. They cover frequen
 Native audio devices, screen permissions, input pass-through, compositor behavior, and macOS signing still need testing on the target desktop. A successful cross-publish does not verify those native behaviors.
 
 On Windows, also run `dotnet run --project Tests/PartyTime.Tests.csproj -c Release -- --native-smoke` to check real display enumeration, click-through window flags, capture exclusion, cursor coordinates, refresh-rate lookup, desktop capture, and WASAPI playback capture. This check uses a small offscreen test window.
+
+## Performance
+
+Rendering explicitly prefers hardware backends, with software fallbacks for compatibility. Effects use immutable Skia pictures, screen animation follows compositor frames, and previews pause while hidden. Capture devices and image resources are reused across settings edits and displays.
+
+See [performance measurements and reproduction commands](docs/performance.md) for the measured capture/recording improvements, raw benchmark data, and their limits. Audio analysis and capture coordination run on the CPU; visual composition and screenshot scaling use the GPU when available.
 
 ## Project layout
 

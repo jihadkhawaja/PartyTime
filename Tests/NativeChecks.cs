@@ -16,7 +16,7 @@ internal static partial class Program
     private static int RunNativeSmoke()
     {
         if (!OperatingSystem.IsWindows()) throw new InvalidOperationException("Run --native-smoke on Windows; portable checks run without this flag.");
-        AppBuilder.Configure<PartyTime.App>().UsePlatformDetect().SetupWithoutStarting();
+        PartyTime.Program.BuildAvaloniaApp().SetupWithoutStarting();
         var controls = new ControlWindow(new(), persistSettings: false);
         var overlay = new OverlayWindow { Width = 160, Height = 90, Position = new PixelPoint(-30000, -30000) };
         try
@@ -35,8 +35,28 @@ internal static partial class Program
             Check(rate > 1 && double.IsFinite(rate), "Display refresh lookup maps Avalonia displays to native monitors");
             using var capture = new DesktopCapture(primary, 48, 28);
             byte[] pixels = new byte[48 * 28 * 4];
-            Check(capture.ReadPixels(pixels) && Enumerable.Range(0, 48 * 28).All(i => pixels[i * 4 + 3] == 255),
-                "Native GDI capture publishes opaque BGRA frames");
+            bool opaque = true;
+            for (int i = 0; i < 5; i++)
+            {
+                opaque &= capture.ReadPixels(pixels) && Enumerable.Range(0, 48 * 28).All(p => pixels[p * 4 + 3] == 255);
+                Thread.Sleep(20);
+            }
+            Check(opaque, "Native capture publishes opaque BGRA frames");
+            Console.WriteLine("Screen capture backend: " + capture.Backend);
+            var scene = new Scene();
+            scene.ApplySettings(new() { Border = PartyTime.Settings.BorderStyle.Glow });
+            long timestamp = Stopwatch.GetTimestamp(); scene.Update(MotionFrame(timestamp), timestamp, 0.1, null);
+            overlay.Surface.ShowScene(scene);
+            int animationFrames = 0;
+            using (var clock = new CompositionClock(overlay, () => animationFrames++))
+            {
+                var frame = new DispatcherFrame();
+                var stop = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(450) };
+                stop.Tick += (_, _) => { stop.Stop(); frame.Continue = false; };
+                stop.Start(); Dispatcher.UIThread.PushFrame(frame);
+            }
+            Check(animationFrames > 0 && ScenePictureOperation.RenderedPictures > 0, "Native compositor clocks and replays immutable scene pictures");
+            Console.WriteLine($"Skia GPU context observed: {ScenePictureOperation.GpuObserved}; animation callbacks: {animationFrames}");
             using var audio = new SystemAudio();
             string? status = null;
             audio.StatusChanged += value => status = value;

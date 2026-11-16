@@ -15,6 +15,7 @@ final class Capture: NSObject, SCStreamOutput, SCStreamDelegate {
     var height = 2
     var parentWatch: DispatchSourceTimer?
     let output = FileHandle.standardOutput
+    var videoFrame = Data()
 
     func stream(_ stream: SCStream, didStopWithError error: Error) {
         fail(error.localizedDescription)
@@ -60,12 +61,12 @@ final class Capture: NSObject, SCStreamOutput, SCStreamDelegate {
             defer { CVPixelBufferUnlockBaseAddress(image, .readOnly) }
             guard let base = CVPixelBufferGetBaseAddress(image) else { return }
             let stride = CVPixelBufferGetBytesPerRow(image)
-            var frame = Data(count: width * height * 4)
-            frame.withUnsafeMutableBytes { destination in
+            if videoFrame.count != width * height * 4 { videoFrame = Data(count: width * height * 4) }
+            videoFrame.withUnsafeMutableBytes { destination in
                 guard let target = destination.baseAddress else { return }
                 for y in 0..<height { memcpy(target.advanced(by: y * width * 4), base.advanced(by: y * stride), width * 4) }
             }
-            output.write(frame)
+            output.write(videoFrame)
         }
     }
 
@@ -93,7 +94,8 @@ final class Capture: NSObject, SCStreamOutput, SCStreamDelegate {
         let configuration = SCStreamConfiguration()
         configuration.width = width; configuration.height = height
         configuration.pixelFormat = kCVPixelFormatType_32BGRA
-        configuration.minimumFrameInterval = CMTime(value: 1, timescale: mode == "audio" ? 1 : 30)
+        let frameRate = mode == "screen" && args.count >= 9 ? (Int32(args[7]) ?? 60) : 30
+        configuration.minimumFrameInterval = CMTime(value: 1, timescale: mode == "audio" ? 1 : max(1, min(60, frameRate)))
         configuration.showsCursor = false
         configuration.capturesAudio = mode == "audio"
         configuration.sampleRate = 48000; configuration.channelCount = 2

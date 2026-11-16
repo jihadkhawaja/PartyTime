@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using Avalonia;
 using Avalonia.Media;
+using Avalonia.Media.Immutable;
 using PartyTime.Settings;
 
 namespace PartyTime.Visualization;
@@ -11,6 +12,8 @@ internal sealed partial class Scene
 {
     private readonly List<(Point Position, long Time)> _cursorPoints = [];
     private long _cursorNow;
+    private Rect _cursorBounds;
+    private bool _cursorBoundsDirty;
     private Point? _lastPointerPosition;
     private const int MaximumCursorPoints = 192;
     public bool HasCursorTrail => _settings.CursorTrailEnabled && Intensity > 0 && _cursorPoints.Count > 0;
@@ -19,16 +22,19 @@ internal sealed partial class Scene
     {
         if (!HasCursorTrail)
             return false;
-        var trailBounds = new Rect(_cursorPoints[0].Position, new Size(0.01, 0.01));
-        foreach (var sample in _cursorPoints)
-            trailBounds = trailBounds.Union(new Rect(sample.Position, new Size(0.01, 0.01)));
-        trailBounds = trailBounds.Inflate(_settings.CursorTrailSize * 4 * dpiScale);
-        return desktopBounds.Intersects(trailBounds);
+        if (_cursorBoundsDirty)
+        {
+            var bounds = new Rect(_cursorPoints[0].Position, new Size(0.01, 0.01));
+            foreach (var sample in _cursorPoints) bounds = bounds.Union(new Rect(sample.Position, new Size(0.01, 0.01)));
+            _cursorBounds = bounds; _cursorBoundsDirty = false;
+        }
+        return desktopBounds.Intersects(_cursorBounds.Inflate(_settings.CursorTrailSize * 4 * dpiScale));
     }
 
     public void ClearCursorTrail()
     {
         _cursorPoints.Clear();
+        _cursorBoundsDirty = true;
         _lastPointerPosition = null;
     }
 
@@ -44,13 +50,13 @@ internal sealed partial class Scene
         int expired = 0;
         while (expired < _cursorPoints.Count && Stopwatch.GetElapsedTime(_cursorPoints[expired].Time, now).TotalSeconds >= lifetime)
             expired++;
-        if (expired > 0)
-            _cursorPoints.RemoveRange(0, expired);
+        if (expired > 0) { _cursorPoints.RemoveRange(0, expired); _cursorBoundsDirty = true; }
         if (position is not { } current || !double.IsFinite(current.X) || !double.IsFinite(current.Y))
             return;
         if (_lastPointerPosition is { } last && ((Vector)(current - last)).Length < 2)
             return;
         _lastPointerPosition = current;
+        _cursorBoundsDirty = true;
         if (_cursorPoints.Count == 0)
         {
             _cursorPoints.Add((current, now));
@@ -99,7 +105,7 @@ internal sealed partial class Scene
                         drawing.DrawColoredLine(start, point, color, opacity, Math.Max(0.7, radius));
                 }
                 else if (viewport.Contains(point))
-                    drawing.DrawEllipse(new SolidColorBrush(Alpha(color, opacity)), null, point, Math.Max(0.5, radius / 3));
+                    drawing.DrawEllipse(new ImmutableSolidColorBrush(Alpha(color, opacity)), null, point, Math.Max(0.5, radius / 3));
                 continue;
             }
             if (!viewport.Contains(point))

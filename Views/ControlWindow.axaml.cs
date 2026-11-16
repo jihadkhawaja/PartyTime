@@ -108,6 +108,9 @@ public partial class ControlWindow : Window
     {
         _exiting = true;
         _samplePreviewTimer?.Stop();
+        _samplePreviewClock?.Dispose();
+        SetSamplePreview(null);
+        _samplePreviewLayer.Dispose();
         if (_saveTimer.IsEnabled) SaveSettings();
         Screens.Changed -= OnDisplaysChanged;
         _hotkey?.Dispose();
@@ -171,12 +174,14 @@ public partial class ControlWindow : Window
             _audio.Start();
             UpdateSampleCaptureExclusion();
             RefreshColorSource();
+            UpdateSamplePreviewTimer();
         }
         catch (Exception ex) { Debug.WriteLine(ex); StopParty(ex.Message); }
     }
 
     private void StopParty(string detail = "Play music, then start the overlay.")
     {
+        SetSamplePreview(null);
         _overlay?.Dispose();
         _overlay = null;
         UpdateSampleCaptureExclusion();
@@ -190,6 +195,7 @@ public partial class ControlWindow : Window
         _tray.ToolTipText = "PartyTime · Off";
         RefreshColorSource();
         RefreshSamplePreview();
+        UpdateSamplePreviewTimer();
     }
 
     private void SetAudioStatus(string detail)
@@ -333,11 +339,12 @@ public partial class ControlWindow : Window
     private void ApplySettings()
     {
         _audio.Focus = _settings.GetRange();
-        SamplePreview.Source = null;
+        SetSamplePreview(null);
         _overlay?.ApplySettings(_settings);
         UpdateSampleCaptureExclusion();
         Preview.ApplySettings(_settings);
         RefreshColorSource();
+        UpdateSamplePreviewTimer();
     }
 
     private void RefreshColorSource()

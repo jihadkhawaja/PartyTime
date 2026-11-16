@@ -73,7 +73,7 @@
             </Grid>
         </Border>
 
-        <TabControl Grid.Row="2" Classes="SettingsTabs" AutomationProperties.Name="PartyTime settings">
+        <TabControl x:Name="SettingsTabs" Grid.Row="2" Classes="SettingsTabs" AutomationProperties.Name="PartyTime settings" SelectionChanged="SettingsTabSelected">
             <TabItem Header="Visuals">
                 <ScrollViewer Classes="SettingsScroll">
                     <StackPanel>
@@ -254,7 +254,7 @@
                             <Slider x:Name="SampleFadeSlider" Minimum="150" Maximum="2000" TickFrequency="50" IsSnapToTickEnabled="True" ValueChanged="SettingsChanged" AutomationProperties.Name="Screen sample fade time"/>
                         </StackPanel>
                         <Border x:Name="SamplePreviewHost" Background="#090810" CornerRadius="7" Margin="0,12,0,7" ClipToBounds="True">
-                            <Image x:Name="SamplePreview" Height="116" Stretch="Uniform" AutomationProperties.Name="Primary display screen sample preview"/>
+                            <Viewbox x:Name="SamplePreview" Height="116" Stretch="Uniform" AutomationProperties.Name="Primary display screen sample preview"/>
                         </Border>
                         <TextBlock x:Name="SampleStatus" Classes="HelpText"/>
                         <TextBlock Text="Samples stay in memory and clear when stopped. Screen sampling excludes PartyTime from screenshots and recordings to prevent feedback." Classes="HelpText" Margin="0,8,0,0"/>

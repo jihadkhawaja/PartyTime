@@ -1,6 +1,7 @@
 using System;
 using Avalonia;
 using Avalonia.Media;
+using Avalonia.Media.Immutable;
 using Avalonia.Media.Imaging;
 using BitmapSource = Avalonia.Media.Imaging.Bitmap;
 using PartyTime.Settings;
@@ -11,15 +12,15 @@ internal interface ISceneDrawing
 {
     void SetImages(ReadOnlySpan<BitmapSource> images);
     void DrawImage(BitmapSource image, Rect bounds, double opacity);
-    void DrawRectangle(Brush brush, Rect bounds);
-    void DrawRoundedRectangle(Brush? brush, Pen? pen, Rect bounds, double radius);
-    void DrawEllipse(Brush? brush, Pen? pen, Point center, double radius);
-    void DrawLine(Pen pen, Point start, Point end);
-    void DrawPolygon(ReadOnlySpan<Point> points, Brush? brush, Pen? pen);
+    void DrawRectangle(IBrush brush, Rect bounds);
+    void DrawRoundedRectangle(IBrush? brush, IPen? pen, Rect bounds, double radius);
+    void DrawEllipse(IBrush? brush, IPen? pen, Point center, double radius);
+    void DrawLine(IPen pen, Point start, Point end);
+    void DrawPolygon(ReadOnlySpan<Point> points, IBrush? brush, IPen? pen);
     void DrawSymbol(ShapeKind shape, Point center, double radius, double rotation, Color color, double opacity, bool filled);
     void DrawGlow(Point center, double radius, Color color, double opacity);
     void DrawColoredLine(Point start, Point end, Color color, double opacity, double thickness);
-    void DrawCurve(Point start, ReadOnlySpan<(Point Control, Point End)> segments, Pen halo, Pen stroke);
+    void DrawCurve(Point start, ReadOnlySpan<(Point Control, Point End)> segments, IPen halo, IPen stroke);
 }
 
 internal sealed class AvaloniaSceneDrawing(DrawingContext drawing) : ISceneDrawing
@@ -30,40 +31,39 @@ internal sealed class AvaloniaSceneDrawing(DrawingContext drawing) : ISceneDrawi
         using var opacityState = drawing.PushOpacity(opacity);
         drawing.DrawImage(image, bounds);
     }
-    public void DrawRectangle(Brush brush, Rect bounds) => drawing.DrawRectangle(brush, null, bounds);
+    public void DrawRectangle(IBrush brush, Rect bounds) => drawing.DrawRectangle(brush, null, bounds);
 
-    public void DrawRoundedRectangle(Brush? brush, Pen? pen, Rect bounds, double radius)
+    public void DrawRoundedRectangle(IBrush? brush, IPen? pen, Rect bounds, double radius)
         => drawing.DrawRectangle(brush, pen, bounds, radius, radius);
 
-    public void DrawEllipse(Brush? brush, Pen? pen, Point center, double radius)
+    public void DrawEllipse(IBrush? brush, IPen? pen, Point center, double radius)
         => drawing.DrawEllipse(brush, pen, center, radius, radius);
 
-    public void DrawLine(Pen pen, Point start, Point end) => drawing.DrawLine(pen, start, end);
+    public void DrawLine(IPen pen, Point start, Point end) => drawing.DrawLine(pen, start, end);
 
     private static Color WithOpacity(Color color, double opacity) => Color.FromArgb((byte)Math.Clamp(Math.Round(255 * opacity), 0, 255), color.R, color.G, color.B);
 
     public void DrawColoredLine(Point start, Point end, Color color, double opacity, double thickness)
-        => drawing.DrawLine(new Pen(new SolidColorBrush(WithOpacity(color, opacity)), thickness)
-            { LineCap = PenLineCap.Round }, start, end);
+        => drawing.DrawLine(new ImmutablePen(new ImmutableSolidColorBrush(WithOpacity(color, opacity)), thickness, lineCap: PenLineCap.Round), start, end);
 
     public void DrawGlow(Point center, double radius, Color color, double opacity)
     {
-        drawing.DrawEllipse(new RadialGradientBrush { GradientStops = [new(WithOpacity(color, opacity * 0.45), 0), new(WithOpacity(color, 0), 1)] }, null, center, radius * 1.7, radius * 1.7);
+        drawing.DrawEllipse(SceneBrush.Radial(new(0, WithOpacity(color, opacity * 0.45)), new(1, WithOpacity(color, 0))), null, center, radius * 1.7, radius * 1.7);
         var core = Color.FromRgb((byte)(color.R * 0.7 + 255 * 0.3), (byte)(color.G * 0.7 + 255 * 0.3), (byte)(color.B * 0.7 + 255 * 0.3));
-        drawing.DrawEllipse(new SolidColorBrush(WithOpacity(core, opacity)), null, center, radius * 0.28, radius * 0.28);
+        drawing.DrawEllipse(new ImmutableSolidColorBrush(WithOpacity(core, opacity)), null, center, radius * 0.28, radius * 0.28);
     }
 
     public void DrawSymbol(ShapeKind shape, Point center, double radius, double rotation, Color color, double opacity, bool filled)
     {
         var (sin, cos) = Math.SinCos(rotation);
-        var transform = new MatrixTransform(new Matrix(radius * cos, radius * sin, -radius * sin, radius * cos, center.X, center.Y));
-        var stroke = new SolidColorBrush(WithOpacity(color, opacity));
-        var fill = filled ? new SolidColorBrush(WithOpacity(color, opacity * 0.78)) : null;
-        using var transformState = drawing.PushTransform(transform.Value);
-        drawing.DrawGeometry(fill, new Pen(stroke, Math.Clamp(radius * 0.1, 0.7, 3) / radius), SymbolGeometry.Get(shape));
+        var transform = new Matrix(radius * cos, radius * sin, -radius * sin, radius * cos, center.X, center.Y);
+        var stroke = new ImmutableSolidColorBrush(WithOpacity(color, opacity));
+        var fill = filled ? new ImmutableSolidColorBrush(WithOpacity(color, opacity * 0.78)) : null;
+        using var transformState = drawing.PushTransform(transform);
+        drawing.DrawGeometry(fill, new ImmutablePen(stroke, Math.Clamp(radius * 0.1, 0.7, 3) / radius), SymbolGeometry.Get(shape));
     }
 
-    public void DrawPolygon(ReadOnlySpan<Point> points, Brush? brush, Pen? pen)
+    public void DrawPolygon(ReadOnlySpan<Point> points, IBrush? brush, IPen? pen)
     {
         if (points.Length < 3)
             return;
@@ -78,7 +78,7 @@ internal sealed class AvaloniaSceneDrawing(DrawingContext drawing) : ISceneDrawi
         drawing.DrawGeometry(brush, pen, geometry);
     }
 
-    public void DrawCurve(Point start, ReadOnlySpan<(Point Control, Point End)> segments, Pen halo, Pen stroke)
+    public void DrawCurve(Point start, ReadOnlySpan<(Point Control, Point End)> segments, IPen halo, IPen stroke)
     {
         var geometry = new StreamGeometry();
         using (var path = geometry.Open())

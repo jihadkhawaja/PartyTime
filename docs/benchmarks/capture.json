@@ -1,0 +1,31 @@
+{
+  "note": "Live desktop content is uncontrolled. Timings measure capture/readback work at scheduled 30 Hz, not end-to-end overlay latency or GPU utilization.",
+  "results": [
+    {
+      "requested": "GDI reference",
+      "backend": "GDI fallback",
+      "width": 960,
+      "height": 402,
+      "meanMs": 54.485735000000005,
+      "p95Ms": 61.5074,
+      "bytesPerAttempt": 0,
+      "available": 60,
+      "updated": 60,
+      "cadenceMeanMs": 54.46642711864409,
+      "cadenceP95Ms": 61.5095
+    },
+    {
+      "requested": "GPU preferred",
+      "backend": "DXGI GPU downscale",
+      "width": 960,
+      "height": 402,
+      "meanMs": 1.1635699999999998,
+      "p95Ms": 2.5289,
+      "bytesPerAttempt": 168,
+      "available": 60,
+      "updated": 30,
+      "cadenceMeanMs": 33.47749491525423,
+      "cadenceP95Ms": 46.381
+    }
+  ]
+}

@@ -18,10 +18,17 @@ internal sealed partial class Scene
     private ImageGroup[] _stickerGroups = [];
     private ImageGroup[] _haloGroups = [];
     private ImageSprite[] _floatingSlots = [];
-    private bool HasDotReplacement => _images.Any(image => image.Settings.Layout == ImageLayout.ReplaceDots);
+    private bool _hasDotReplacement;
+    private bool HasDotReplacement => _hasDotReplacement;
+    private OverlayImageSettings[]? _appliedImages;
+    private CircleStyle _imageCircle;
+    private OverlayStyle _imageOverlay;
 
     private void ApplyImages(OverlayImageSettings[] images)
     {
+        if (ReferenceEquals(images, _appliedImages) && _imageCircle == _settings.Circle && _imageOverlay == _settings.Overlay) return;
+        _appliedImages = images; _imageCircle = _settings.Circle; _imageOverlay = _settings.Overlay;
+        _hasDotReplacement = images.Any(image => image.Enabled && image.Layout == ImageLayout.ReplaceDots);
         _images = images.Where(image => image.Enabled).Select(image => (Settings: image, Bitmap: OverlayImageStore.Load(image)))
             .Where(image => image.Bitmap != null).Select(image => new ImageSprite(image.Settings, image.Bitmap!)).ToArray();
         _imageSources = _images.Select(image => image.Bitmap).Distinct().ToArray();

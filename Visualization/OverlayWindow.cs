@@ -5,6 +5,7 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using PartyTime.Interop;
+using PartyTime.Settings;
 
 namespace PartyTime.Visualization;
 
@@ -25,6 +26,7 @@ internal sealed class OverlayWindow : Window
         Focusable = false;
         IsHitTestVisible = false;
         Content = Surface;
+        Closed += (_, _) => Surface.Dispose();
     }
 
     public void Open(Screen screen)
@@ -41,17 +43,20 @@ internal sealed class OverlayWindow : Window
     public bool SetCaptureExcluded(bool exclude) => Desktop.SetCaptureExcluded(this, exclude);
 }
 
-internal sealed class OverlaySurface : Panel
+internal sealed class OverlaySurface : Panel, IDisposable
 {
     private readonly SceneLayer _base = new(false);
     private readonly SceneLayer _cursor = new(true);
     private readonly SampleLayer _sample = new();
+    private readonly ScreenSampleLayer _screen = new();
+    private bool _baseVisible, _cursorVisible;
     public Point DesktopOrigin { get; set; }
     public double Scaling { get; set; } = 1;
     public OverlaySurface()
     {
         ClipToBounds = true;
         Children.Add(_sample);
+        Children.Add(_screen);
         Children.Add(_base);
         Children.Add(_cursor);
     }
@@ -59,17 +64,32 @@ internal sealed class OverlaySurface : Panel
     {
         if (redrawBase)
         {
-            _base.Scene = scene;
-            _base.InvalidateVisual();
-            _sample.Sample = sample;
-            _sample.SampleOpacity = sampleOpacity;
-            _sample.InvalidateVisual();
+            bool visible = scene?.BaseVisible == true;
+            if (visible || _baseVisible) { _base.Scene = scene; _base.InvalidateVisual(); }
+            _baseVisible = visible;
+            if (_sample.Sample != sample || _sample.SampleOpacity != sampleOpacity)
+            {
+                _sample.Sample = sample;
+                _sample.SampleOpacity = sampleOpacity;
+                _sample.InvalidateVisual();
+            }
         }
-        _cursor.Scene = drawCursor ? scene : null;
-        _cursor.DesktopOrigin = DesktopOrigin;
-        _cursor.Scaling = Scaling;
-        _cursor.InvalidateVisual();
+        bool cursorVisible = drawCursor && scene?.HasCursorTrail == true;
+        if (cursorVisible || _cursorVisible)
+        {
+            _cursor.Scene = cursorVisible ? scene : null;
+            _cursor.DesktopOrigin = DesktopOrigin;
+            _cursor.Scaling = Scaling;
+            _cursor.InvalidateVisual();
+        }
+        _cursorVisible = cursorVisible;
     }
+    public void ShowScreenSample(ScreenSampleFrame? frame, ScreenSampleRequest request, long now)
+        => _screen.ShowFrame(frame, request.Settings.SampleBlend,
+            1 + request.Settings.SampleZoom / 100.0 * request.Pulse(now), frame == null ? 0 : request.Opacity(now));
+
+    public void ClearScreenSample() => _screen.ShowFrame(null, ScreenSampleBlend.Normal, 1, 0);
+    public void Dispose() { _screen.Dispose(); _base.Dispose(); _cursor.Dispose(); }
     private sealed class SampleLayer : Control
     {
         public Bitmap? Sample;
@@ -81,15 +101,23 @@ internal sealed class OverlaySurface : Panel
             context.DrawImage(Sample, new Rect(Bounds.Size));
         }
     }
-    private sealed class SceneLayer(bool cursor) : Control
+    private sealed class SceneLayer(bool cursor) : Control, IDisposable
     {
+        private SkiaSceneRenderer? _renderer;
         public Scene? Scene;
         public Point DesktopOrigin;
         public double Scaling = 1;
         public override void Render(DrawingContext context)
         {
-            if (cursor) Scene?.DrawCursor(new AvaloniaSceneDrawing(context), Bounds.Width, Bounds.Height, DesktopOrigin, Scaling, Scaling);
-            else if (Scene?.BaseVisible == true) Scene.DrawBase(new AvaloniaSceneDrawing(context), Bounds.Width, Bounds.Height);
+            if (Scene == null || !cursor && !Scene.BaseVisible)
+            {
+                _renderer?.SetImages([]);
+                return;
+            }
+            _renderer ??= new SkiaSceneRenderer();
+            var picture = _renderer.Record(Scene, Bounds.Width, Bounds.Height, cursor, DesktopOrigin, Scaling);
+            context.Custom(new ScenePictureOperation(new Rect(Bounds.Size), picture));
         }
+        public void Dispose() { _renderer?.Dispose(); _renderer = null; }
     }
 }

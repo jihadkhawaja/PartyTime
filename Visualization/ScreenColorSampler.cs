@@ -16,7 +16,7 @@ internal sealed class ScreenColorSampler : IDisposable
     private int _state;
     public ScreenColorSampler(Screen screen)
     {
-        _capture = new DesktopCapture(screen, SampleWidth, SampleHeight);
+        _capture = new DesktopCapture(screen, SampleWidth, SampleHeight, frameRate: 4);
         _timer = new Timer(_ => Sample(), null, TimeSpan.Zero, TimeSpan.FromMilliseconds(250));
     }
     public Color[]? Latest => Volatile.Read(ref _latest);

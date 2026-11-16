@@ -11,6 +11,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Interactivity;
 using Avalonia.Media;
+using Avalonia.Media.Immutable;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
@@ -30,6 +31,8 @@ internal static partial class Program
     {
         try
         {
+            if (args.Contains("--benchmark-capture")) return RunNativePerformanceBenchmark();
+            if (args.Contains("--benchmark-performance")) return RunPerformanceBenchmark(args);
             if (args.Contains("--native-smoke")) return RunNativeSmoke();
             AppBuilder.Configure<PartyTime.App>().UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
                 .UseSkia().SetupWithoutStarting();
@@ -37,7 +40,8 @@ internal static partial class Program
             CheckAudio(); CheckSettings();
             string image = CreateImage();
             CheckScene(image); CheckImagePlacement(image); CheckChromaKey();
-            CheckMotion(); CheckScreenSamples(); CheckPresets(); CheckTransparency(image); CheckControls(image); CheckBulkControls(image);
+            CheckSkiaRendering(image);
+            CheckMotion(); CheckScreenSamples(); CheckScreenPerformance(); CheckPresets(); CheckTransparency(image); CheckControls(image); CheckBulkControls(image);
             Console.WriteLine($"Passed {_checks} checks. Rendered checks: {Output}");
             return 0;
         }
@@ -316,21 +320,21 @@ internal static partial class Program
             var (sin, cos) = Math.SinCos(rotation);
             for (int i = 0; i < source.Length; i++)
                 points[i] = new(center.X + radius * (source[i].X * cos - source[i].Y * sin), center.Y + radius * (source[i].X * sin + source[i].Y * cos));
-            DrawPolygon(points, filled ? new SolidColorBrush(Colors.White) : null, null);
+            DrawPolygon(points, filled ? new ImmutableSolidColorBrush(Colors.White) : null, null);
         }
         public void SetImages(ReadOnlySpan<BitmapSource> images) { }
         public void DrawImage(BitmapSource image, Rect bounds, double opacity) { Images++; LastBounds = bounds; ImageDraws.Add((image, bounds)); }
-        public void DrawRectangle(Brush brush, Rect bounds) => Shapes++;
-        public void DrawRoundedRectangle(Brush? brush, Pen? pen, Rect bounds, double radius) => Shapes++;
-        public void DrawEllipse(Brush? brush, Pen? pen, Point center, double radius) { Shapes++; Centers.Add(center); }
-        public void DrawLine(Pen pen, Point start, Point end) => Shapes++;
-        public void DrawPolygon(ReadOnlySpan<Point> points, Brush? brush, Pen? pen)
+        public void DrawRectangle(IBrush brush, Rect bounds) => Shapes++;
+        public void DrawRoundedRectangle(IBrush? brush, IPen? pen, Rect bounds, double radius) => Shapes++;
+        public void DrawEllipse(IBrush? brush, IPen? pen, Point center, double radius) { Shapes++; Centers.Add(center); }
+        public void DrawLine(IPen pen, Point start, Point end) => Shapes++;
+        public void DrawPolygon(ReadOnlySpan<Point> points, IBrush? brush, IPen? pen)
         {
             Shapes++;
             PolygonVertices.Add(points.ToArray());
             if (brush != null) FilledPolygons++;
         }
-        public void DrawCurve(Point start, ReadOnlySpan<(Point Control, Point End)> segments, Pen halo, Pen stroke) => Shapes++;
+        public void DrawCurve(Point start, ReadOnlySpan<(Point Control, Point End)> segments, IPen halo, IPen stroke) => Shapes++;
     }
     private static Bitmap FromStraightPixels(byte[] pixels, int width, int height)
     {

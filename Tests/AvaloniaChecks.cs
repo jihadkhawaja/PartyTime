@@ -132,6 +132,12 @@ internal static partial class Program
                 SavePng(target, Path.Combine(Output, $"controls-{tab.Header}.png"));
                 Check(target.PixelSize == new PixelSize(584, 744), $"{tab.Header} tab renders with Avalonia");
             }
+            window.Hide();
+            var preview = window.FindControl<PartyTime.Controls.StylePreview>("Preview")!;
+            Check(typeof(PartyTime.Controls.StylePreview).GetField("_clock", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(preview) == null,
+                "Hiding controls stops the animated style preview clock");
+            Check(typeof(ControlWindow).GetField("_samplePreviewClock", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window) == null,
+                "Hiding controls stops the screen preview clock");
         }
         finally { Close(window); }
     }

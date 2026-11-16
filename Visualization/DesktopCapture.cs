@@ -12,7 +12,7 @@ using PartyTime.Interop;
 namespace PartyTime.Visualization;
 
 // Captures are raw BGRA in memory. Each worker owns its native resources.
-internal sealed class DesktopCapture : IDisposable
+internal sealed class DesktopCapture : IScreenCaptureSource
 {
     public static bool IsSupported => OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041) || OperatingSystem.IsMacOSVersionAtLeast(13);
     public static string UnavailableReason => OperatingSystem.IsLinux()
@@ -28,12 +28,22 @@ internal sealed class DesktopCapture : IDisposable
     private readonly object _macGate = new();
     private string? _error;
     private long _retryAfter;
+    private long _gpuRetryAfter;
+    private GpuScreenCapture? _gpu;
+    private bool _tryGpu = true;
+    private long _version;
+    private long _receivedVersion;
+    private readonly int _requestedFrameRate;
+    public long Version => Volatile.Read(ref _version);
+    public int MaximumFrameRate => Math.Min(_requestedFrameRate, OperatingSystem.IsWindows() && _gpu == null ? 30 : 60);
+    public string Backend => OperatingSystem.IsWindows() ? _gpu != null ? "DXGI GPU downscale" : "GDI fallback" : "ScreenCaptureKit";
     public string? Error => Volatile.Read(ref _error);
 
-    public DesktopCapture(Screen screen, int width, int height)
+    public DesktopCapture(Screen screen, int width, int height, bool preferGpu = true, int frameRate = 60)
     {
         _bounds = screen.Bounds;
         _width = width; _height = height;
+        _tryGpu = preferGpu; _requestedFrameRate = Math.Clamp(frameRate, 1, 60);
         _displayId = (ulong)(screen.TryGetPlatformHandle()?.Handle.ToInt64() ?? 0);
     }
 
@@ -41,12 +51,14 @@ internal sealed class DesktopCapture : IDisposable
     {
         if (OperatingSystem.IsWindows())
         {
+            if (ReadGpu(destination)) return true;
             EnsureWindowsCapture();
             if (!StretchBlt(_memoryDc, 0, 0, _width, _height, _screenDc, _bounds.X, _bounds.Y, _bounds.Width, _bounds.Height, 0x00CC0020))
                 throw new InvalidOperationException("Desktop capture is unavailable.");
             GdiFlush();
             Marshal.Copy(_pixels, destination, 0, destination.Length);
             for (int i = 3; i < destination.Length; i += 4) destination[i] = 255;
+            Interlocked.Increment(ref _version);
             return true;
         }
         if (!OperatingSystem.IsMacOS()) return false;
@@ -58,7 +70,7 @@ internal sealed class DesktopCapture : IDisposable
             _cancellation = new CancellationTokenSource();
             var start = MacCapture.CreateStartInfo("screen", _displayId.ToString(CultureInfo.InvariantCulture),
                 _bounds.X.ToString(CultureInfo.InvariantCulture), _bounds.Y.ToString(CultureInfo.InvariantCulture),
-                _width.ToString(CultureInfo.InvariantCulture), _height.ToString(CultureInfo.InvariantCulture));
+                _width.ToString(CultureInfo.InvariantCulture), _height.ToString(CultureInfo.InvariantCulture), _requestedFrameRate.ToString(CultureInfo.InvariantCulture));
             var process = Process.Start(start) ?? throw new IOException("Screen capture could not start.");
             _process = process;
             _retryAfter = Stopwatch.GetTimestamp() + Stopwatch.Frequency * 5;
@@ -68,6 +80,7 @@ internal sealed class DesktopCapture : IDisposable
         {
             if (_latest == null) return false;
             _latest.CopyTo(destination, 0);
+            Volatile.Write(ref _version, _receivedVersion);
         }
         return true;
     }
@@ -85,6 +98,7 @@ internal sealed class DesktopCapture : IDisposable
                 {
                     var previous = _latest;
                     _latest = pixels;
+                    _receivedVersion++;
                     pixels = previous ?? new byte[pixels.Length];
                 }
                 Volatile.Write(ref _error, null);
@@ -92,12 +106,35 @@ internal sealed class DesktopCapture : IDisposable
         }
         catch (Exception ex) when (ex is IOException or OperationCanceledException or ObjectDisposedException or InvalidOperationException)
         {
-            if (!token.IsCancellationRequested)
+            if (!token.IsCancellationRequested && ReferenceEquals(Volatile.Read(ref _process), process))
             {
                 try { Volatile.Write(ref _error, (await stderr).Trim()); }
                 catch (OperationCanceledException) { }
                 lock (_macGate) _latest = null;
             }
+        }
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private bool ReadGpu(byte[] destination)
+    {
+        try
+        {
+            if (_gpu == null && _tryGpu && Stopwatch.GetTimestamp() >= _gpuRetryAfter)
+            {
+                _gpu = GpuScreenCapture.Open(_bounds, _width, _height);
+                _tryGpu = _gpu != null;
+            }
+            if (_gpu == null || !_gpu.TryReadPixels(destination)) return false;
+            if (_gpu.Changed) Interlocked.Increment(ref _version);
+            return true;
+        }
+        catch (SharpGen.Runtime.SharpGenException ex)
+        {
+            Debug.WriteLine(ex);
+            _gpu?.Dispose(); _gpu = null;
+            _gpuRetryAfter = Stopwatch.GetTimestamp() + Stopwatch.Frequency * 5;
+            return false;
         }
     }
 
@@ -119,6 +156,7 @@ internal sealed class DesktopCapture : IDisposable
 
     public void Dispose()
     {
+        if (OperatingSystem.IsWindows()) { _gpu?.Dispose(); _gpu = null; }
         _cancellation?.Cancel();
         if (_process != null)
         {
