@@ -1,25 +1,44 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0-windows</TargetFramework>
-    <UseWPF>true</UseWPF>
-    <UseWindowsForms>true</UseWindowsForms>
+    <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <!-- The WPF executable declares DPI awareness in its manifest. WinForms supplies the tray icon and screen enumeration. -->
-    <NoWarn>$(NoWarn);WFO0003</NoWarn>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <ApplicationIcon>Assets\PartyTime-v2.ico</ApplicationIcon>
+    <ApplicationIcon>Assets/PartyTime-v2.ico</ApplicationIcon>
+    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Remove="Tests\**\*.cs" />
+    <Compile Remove="Tests/**/*.cs" />
+    <AvaloniaResource Include="Assets/**" />
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
       <_Parameter1>PartyTime.Tests</_Parameter1>
     </AssemblyAttribute>
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Controls.ColorPicker" Version="12.1.4" />
     <PackageReference Include="NAudio.Wasapi" Version="3.3.0" />
     <PackageReference Include="Vortice.Direct2D1" Version="3.8.3" />
     <PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />
-    <PackageReference Include="Vortice.DirectComposition" Version="3.8.3" />
-    <Resource Include="Assets\PartyTime-v2.ico" />
   </ItemGroup>
+  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+    <MacCapturePath>$(BaseIntermediateOutputPath)native/$(RuntimeIdentifier)/PartyTimeCapture</MacCapturePath>
+    <MacCaptureArchitecture Condition="'$(RuntimeIdentifier)' == 'osx-x64'">x86_64</MacCaptureArchitecture>
+    <MacCaptureArchitecture Condition="'$(RuntimeIdentifier)' == 'osx-arm64'">arm64</MacCaptureArchitecture>
+    <MacCaptureArchitecture Condition="'$(MacCaptureArchitecture)' == '' And '$(NETCoreSdkRuntimeIdentifier)' == 'osx-arm64'">arm64</MacCaptureArchitecture>
+    <MacCaptureArchitecture Condition="'$(MacCaptureArchitecture)' == ''">x86_64</MacCaptureArchitecture>
+  </PropertyGroup>
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+    <None Include="$(MacCapturePath)" Link="Native/macOS/PartyTimeCapture" TargetPath="Native/macOS/PartyTimeCapture"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <Target Name="BuildMacCapture" BeforeTargets="PrepareForBuild" Condition="$([MSBuild]::IsOSPlatform('OSX'))"
+          Inputs="Native/macOS/PartyTimeCapture.swift;PartyTime.csproj" Outputs="$(MacCapturePath)">
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(MacCapturePath)'))" />
+    <Exec Command="xcrun swiftc -O -target $(MacCaptureArchitecture)-apple-macos13.0 &quot;$(MSBuildProjectDirectory)/Native/macOS/PartyTimeCapture.swift&quot; -o &quot;$(MacCapturePath)&quot;" />
+  </Target>
+  <Target Name="RequireNativeMacPublish" BeforeTargets="Publish"
+          Condition="('$(RuntimeIdentifier)' == 'osx-x64' Or '$(RuntimeIdentifier)' == 'osx-arm64') And !$([MSBuild]::IsOSPlatform('OSX'))">
+    <Error Text="Publish macOS on a Mac so the ScreenCaptureKit helper is built. Use scripts/publish.sh or the macOS release workflow." />
+  </Target>
 </Project>

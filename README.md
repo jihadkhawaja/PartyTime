@@ -1,106 +1,141 @@
 # PartyTime
 
-**A beat-synced Windows desktop visualizer with click-through overlays, edge glows, and spectrum effects.**
+**A beat-synced desktop visualizer built with Avalonia and .NET 10 for Windows, Linux, and macOS.**
 
-![PartyTime Windows desktop audio visualizer](Assets/GitHub-cover.png)
+![PartyTime desktop visualizer](Assets/GitHub-cover.png)
 
-PartyTime turns music, videos, and other system audio into a light show across your displays. It uses WASAPI loopback to listen to your default Windows playback device. The overlay passes clicks through to your apps, fades during silence, and reconnects when your default playback device changes.
+PartyTime turns music, videos, and other system playback into a light show across your displays. Transparent overlays pass clicks through to your apps, respond to independent audio ranges, and fade during silence. The controls, preview, image tools, and effects use Avalonia and its Skia renderer on every platform.
 
-## Quick start
+## Platform requirements
 
-To run from source, install the .NET 10 SDK on Windows.
+| Platform | Playback capture | Desktop integration |
+| --- | --- | --- |
+| Windows 10 / 11 | WASAPI loopback on the default output; reconnects when the output changes | Click-through overlays, tray, global shortcut, startup registration; screen effects require Windows 10 version 2004 or later and capture exclusion support |
+| Linux with X11 and a compositor | `parec` from `pulseaudio-utils`, connected to PulseAudio or PipeWire-Pulse; captures the default output monitor | Click-through X11 overlays, cursor tracking, shortcut, XDG autostart, and tray where a host exists; closing controls quits so the app remains usable without a tray host |
+| macOS 13 or later | Native ScreenCaptureKit helper captures system playback without a virtual audio device | Click-through overlays, menu-bar controls, LaunchAgent startup, and screen effects; allow Screen & System Audio Recording when macOS requests it; the global shortcut may also need Input Monitoring permission |
 
-```powershell
+**Linux limitations:** use an X11 desktop session for global overlay placement and cursor tracking. XWayland behavior depends on the compositor; native Wayland does not expose the global placement and input APIs this app requires. Screen color sampling and screenshot effects are unavailable on Linux because the current capture backend cannot exclude PartyTime safely. These controls explain the limitation; palette effects, audio routing, imported images, and motion continue working.
+
+On Ubuntu / Debian, install Linux playback capture with `sudo apt install pulseaudio-utils`. A PipeWire desktop must also provide its PulseAudio compatibility server. A compositing window manager is required for transparent X11 overlays.
+
+macOS builds require Xcode Command Line Tools (`xcode-select --install`) to compile the included Swift helper. Published macOS bundles include the helper; end users do not need Swift or the .NET SDK. macOS packages are ad-hoc signed, and are not Developer ID signed or notarized.
+
+## Run from source
+
+Install the .NET 10 SDK, plus the requirements above for your OS.
+
+```sh
 git clone https://github.com/jihadkhawaja/PartyTime.git
 cd PartyTime
 dotnet run --project PartyTime.csproj
 ```
 
-1. Play music or a video through your default Windows audio output.
-2. Click **Start party** or press **Ctrl + Alt + P**.
-3. Try a preset in **Visuals**, or mix effects using the settings tabs. The preview uses sample motion so you can try settings with the overlay off.
-4. Press the same shortcut to stop. Closing the controls sends PartyTime to the system tray. To quit, right-click its tray icon and choose **Exit PartyTime**.
+1. Play music or a video through your default audio output.
+2. Click **Start party**, or press **Ctrl + Alt + P** (**Ctrl + Option + P** on macOS).
+3. Choose a preset in **Visuals** and click **Apply preset**, or mix individual layers. The preview uses sample motion even with the overlay off.
+4. Use **Stop party** to clear the overlay. On Windows and macOS, closing controls sends the app to the tray / menu bar; choose **Exit PartyTime** to quit. On Linux, closing controls quits.
+
+Launching PartyTime again opens the existing instance's controls. Startup launches use `--startup`; Windows and macOS open in the tray / menu bar, while Linux keeps controls visible.
 
 ## Customize
 
-| Tab | What you can change |
+| Tab | Controls |
 | --- | --- |
-| **Visuals** | Apply a visual preset or mix bars and waves, circles, borders, and overlay effects. Set the size and intensity, and choose 20, 30, 45, or 60 FPS or **Match display**. |
-| **Images** | Add PNG, JPEG, or BMP images as stickers, image halos, floating particles, or replacements for dots and sparks. Set each image's size, opacity, copies, position, and audio range, and remove a background color with chroma key. |
-| **Screen** | Capture screenshots on beats and blend them over each display. Set the effect, beat source, beats per sample, opacity, zoom, and fade time. |
-| **Motion** | Toggle a mouse cursor trail and an independent animated shape layer. Choose trail style, shape, lifetime, and size; customize shape type, motion, fill, count, size, and opacity. |
-| **Audio** | Focus on Full Mix, Bass, Vocals, Mids, Treble, or a custom range from 40 to 13,000 Hz. Assign separate frequency ranges to bars, circles, borders, overlay effects, shapes, and cursor pulses. Use **Response** to adjust how strongly the visuals move. |
-| **Colors** | Pick Neon, Sunset, Aurora, or two custom colors. **Screen** samples your primary display, and **Mix** blends those colors with your palette. |
-| **App** | Turn on **Start with Windows** to launch PartyTime in the system tray at sign-in. This is off by default. |
+| **Visuals** | Eight visual presets; bars and waves, circles, borders, overlay effects, size, intensity, 20 / 30 / 45 / 60 FPS, and Match display |
+| **Images** | PNG, JPEG, and BMP stickers, image halos, floating images, and dot / spark replacements; individual size, opacity, copies, placement, audio routing, and chroma key |
+| **Screen** | Beat-synced screenshots, blend mode, beat source, beats per screenshot, opacity, zoom, and fade time, on supported platforms |
+| **Motion** | Glow, ribbon, or shape cursor trails; ten animated shape types plus mixed shapes; float, orbit, rain, burst, and spiral motion |
+| **Audio** | Full mix, bass, vocals, mids, treble, or custom frequency focus, response, and independent ranges per layer |
+| **Colors** | Neon, Sunset, Aurora, or two custom colors; palette, screen sampling, or a blend; optional color cycling |
+| **App** | Start at sign-in, off by default |
 
-Each visual layer has its own **None** option. Try **Edge bars**, **Radial wave**, **Double rail**, and **Sparks** together. For a border-only effect, pick a border, set the other three layers to **None**, and turn off the Motion and Screen layers. To make the overlay follow voices more closely, choose **Audio → Vocals**, which emphasizes the 300–3,400 Hz range.
+Each visual layer has a **None** option. Border-only, image-only, shape-only, and cursor-only looks work independently. Cursor trails also work during silence. Trail lifetime ranges from 150 to 2,000 ms; motion history clears when disabled. Animated shapes include circles, squares, triangles, diamonds, stars, hexagons, hearts, crosses, pentagons, and octagons, with 4–96 shapes and filled or outlined styling.
 
-In **Screen**, enable **Overlay screen samples**, start the party, and play audio. PartyTime freezes a screenshot from each display on the first detected beat, holds it for **1–8 beats**, then jumps to a fresh screenshot. Intermediate beats pulse the held sample with a slight zoom and renewed opacity; **Beat zoom** at 0% keeps it still. Choose **Low · bass**, **Mid · instruments**, **High · treble**, **Full mix**, or **Follow focus** as the beat source. Adjust opacity and the 150–2,000 ms fade after each beat. The sample layer works with all other visual layers off and fades completely during silence.
+Audio ranges are **Low** (40–250 Hz), **Mid** (250–2,000 Hz), **High** (2,000–13,000 Hz), **Full mix**, and **Follow focus**. Vocals emphasizes 300–3,400 Hz. Each layer's routing works independently of the global focus. Presets preserve imported images, audio focus, response, frame rate, and screenshot preferences.
 
-Sample effects include **Normal** (a screenshot echo), **Additive** (a bright sum), **Screen** (a softer lightening blend), **Multiply** (a darker blend), **Difference** (changes between the held sample and current desktop), and **Negative** (inverted sample colors). Each display uses its own screenshot; the tab previews the primary display. Capture uses GPU desktop duplication and GPU downscaling where available, reusing unchanged desktop frames; rotated displays and unavailable GPU capture use a GDI fallback. Capture and CPU blending run in the background at up to 30 FPS, with images scaled to at most 960 pixels on their longer side. Screenshots stay in memory and clear when the feature or party is stopped. The feature requires Windows 10 version 2004 or later and capture exclusion support. While active, PartyTime excludes its overlays and controls from screenshots and recordings to prevent feedback.
+Buttons use consistent padding and clear primary, secondary, and destructive styles. Radio choices are full selection cards with a checkmark, selected styling, hover feedback, and keyboard focus indicators. Native radio grouping and keyboard interaction remain available.
 
-In **Visuals → Visual presets**, choose **Neon party**, **Geometry dance**, **Stardust**, **Heartbeat**, **Aurora rain**, **Cosmic spiral**, **Minimal glow**, or **Cursor comet**, then click **Apply preset**. Each preset combines layers, color palettes, and audio assignments. Presets keep your imported images and their customization, audio focus, response, and frame rate. All preset settings can be edited afterward.
+### Images
 
-In **Motion**, **Show cursor trail** enables a **Glow**, **Ribbon**, or **Shapes** trail behind your mouse. The trail follows the cursor across displays, fades when you stop moving, and works during silence while the party is on. Cursor updates follow each display's refresh rate up to 120 Hz, independently of the music effects' FPS; if refresh detection is unavailable, the cursor targets 60 Hz. Music effects keep their selected frame rate, and only displays touched by the trail receive extra cursor redraws. **Audio → Cursor pulses** chooses which frequencies add pulses. Trail lifetime ranges from 150 to 2,000 ms. Turning the toggle off clears the trail immediately.
+Add up to 16 images with up to 64 copies each. Transparency and aspect ratio are preserved. Imported copies are kept in PartyTime's local data folder, so moving the original image does not break the overlay. Images must be under 20 MB and no larger than 16,384 pixels per side; copies are scaled to at most 1,024 pixels on the longer side.
 
-**Show animated shapes** adds circles, squares, triangles, diamonds, stars, hexagons, hearts, crosses, pentagons, octagons, or a mix of all ten. Choose **Float**, **Orbit**, **Rain**, **Beat burst**, or **Spiral**, with filled or outlined shapes. Set 4–96 shapes and choose their size and opacity. **Audio → Animated shapes** controls their independent frequency response. Both Motion layers are off by default for existing settings, and both appear in the sample style preview.
+Use Ctrl+click (Command / platform selection modifiers where supported), Shift+click, or **Select all** for bulk edits. A change applies only that field to selected images, preserving individual values elsewhere. Mixed values are marked, and the preview shows the first selected image. Image names remain individual.
 
-In **Audio → Audio range per layer**, choose **Low** (40–250 Hz), **Mid** (250–2,000 Hz), **High** (2,000–13,000 Hz), or **Full mix** for each part. For example, let the circle pulse with bass, the border follow instruments, and sparks react to cymbals. **Follow focus**, the default, uses the frequency focus selected above, including your custom range. Independent ranges keep working even when the global focus excludes those frequencies.
+**Remove a color (chroma key)** removes an opaque background while preserving the original. Choose **Pick from image** and click the original preview, or enter a hex color. Tolerance removes similar shades with feathered edges; the checkerboard shows transparency. Disabling chroma key restores the original.
 
-In **Images**, click **Add image…** to select one or more images, then select an image to customize it. **Sticker** places a single image, **Image halo** repeats it around a circle, and **Floating images** spreads copies across each display. **Replace dots / sparks** substitutes your artwork for the particles in **Visuals → Dot halo** and **Sparks**; enable either visual to see the replacement. Each image has its own audio range. You can disable or remove images individually and use images with all four built-in layers set to **None**.
+Shared halos and floating layouts interleave images in list order, reserve separate slots, and shrink copies to avoid overlap. Stickers sharing an anchor are placed side by side; separately positioned stickers retain their anchors.
 
-Use **Ctrl+click** to select several images, **Shift+click** for a range, or **Select all** (also **Ctrl+A** while the list is focused). Change a setting to apply just that setting to every selected image. Other settings remain individual. A dash or **Mixed** marks values that differ; mixed sliders show the preview image's value, which you can apply to the selection by clicking the slider. The preview shows the first selected image. Color picking also applies to the selection, and **Remove selected** removes the selected images together. Select one image to rename it.
+### Screen effects
 
-Images in a shared halo or floating layout alternate in list order, each taking the next available slot. Each image keeps its own copy count. Copies shrink when needed to fit the space between neighbors. Stickers sharing a position are arranged side by side; separately positioned stickers keep their chosen anchors.
+On Windows and macOS, screen colors are sampled from the primary display. Screenshots are captured per display, held for 1–8 beats, and faded over 150–2,000 ms. Intermediate beats renew opacity and zoom; 0% zoom keeps the screenshot still. **Normal**, **Additive**, **Screen**, **Multiply**, **Difference**, and **Negative** blends are available. The Screen tab previews the primary display.
 
-To remove an opaque background, enable **Remove a color (chroma key)**, click **Pick from image**, then click the background color in the preview. The picker shows the original image so you can select a color that has already been removed. Adjust **Color tolerance** to include similar shades, or type a hex color directly. The preview's checkerboard shows transparency. Color removal applies to the overlay and is saved per image; disabling the checkbox restores the original image.
+Capture runs off the UI thread, with screenshots scaled to at most 960 pixels on the longer side. Windows prefers DXGI desktop duplication and GPU downscaling, with a GDI fallback; macOS uses ScreenCaptureKit with PartyTime excluded. Blends, zoom, fades, and the live Screen preview use the renderer. Live desktop blends capture at up to 60 FPS on the hardware path; held Normal/Negative samples avoid repeated capture, and unchanged desktop frames reuse their uploaded image. Capture permissions, protected content, and desktop restrictions can make capture unavailable. Status messages explain capture failures; other effects remain usable.
 
-PNG transparency and aspect ratio are preserved. Size is a percentage of each display's shorter side, and position is a percentage of its width and height. Add up to 16 images with up to 64 copies each. PartyTime keeps local copies in `%LOCALAPPDATA%\PartyTime\Images`, so moving the original file does not break the overlay. Images must be under 20 MB and no larger than 16,384 pixels on either side; imported copies are scaled to at most 1,024 pixels on the longer side.
+Screenshots and audio stay in memory and are cleared when stopped. PartyTime does not upload them. While screen effects are active, Windows excludes the controls and overlays from screenshots and recordings to avoid feedback. For visible recordings, choose **Palette** and disable screen samples.
 
-The overlay defaults to 30 FPS. **Match display** targets the refresh rate Windows reports for each display and uses 30 FPS when the refresh rate is unavailable. Higher frame rates make motion smoother and use more graphics resources. All frame rates use full-resolution effects.
+### Storage and desktop behavior
 
-**Cycle through colors** is on by default. It moves colors through the overlay and shifts them forward on beats. Turning it off keeps each part assigned to the same color, while **Screen** and **Mix** can still pick up changing screen colors.
+Settings use the same JSON format as the previous Windows app and remain in the platform's local application-data directory under `PartyTime/settings.json`. Windows continues to use `%LOCALAPPDATA%/PartyTime`; imported artwork is in its `Images` subfolder. Startup registration uses the Windows Run key, an XDG autostart entry on Linux, or a LaunchAgent on macOS. If you move the executable after enabling startup, disable and re-enable the option.
 
-Visual settings are saved in `%LOCALAPPDATA%\PartyTime\settings.json`. If you move the executable after enabling startup, toggle **Start with Windows** off and back on from the new location.
+The default effect rate is 30 FPS. Cursor trails update separately, up to 120 Hz. Match display uses Windows and macOS refresh-rate detection and a 60 Hz fallback where the platform does not report a usable rate. Higher frame rates increase graphics work. Fullscreen behavior depends on the desktop compositor; exclusive fullscreen and secure desktops can bypass overlays.
 
-## Desktop and capture behavior
+## Publish
 
-- PartyTime works over the Windows desktop, including browser fullscreen and borderless fullscreen windows. Exclusive fullscreen apps and the Windows secure desktop can bypass desktop overlays.
-- Audio is analyzed in memory. Apps routed to a different playback device are outside the captured mix.
-- **Screen** and **Mix** sample colors locally while the overlay is active. They exclude the overlay from sampling to prevent color feedback, so it may be hidden from screenshots and recordings. Use **Palette** mode with **Overlay screen samples** disabled when you want it visible in captures.
+All builds are self-contained; the target machine does not need the .NET runtime. Supported runtime identifiers are `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`, `osx-x64`, and `osx-arm64`.
+
+From PowerShell, publish Windows or Linux:
+
+```powershell
+./scripts/Publish.ps1 -Runtime win-x64
+./scripts/Publish.ps1 -Runtime linux-x64
+# Existing Windows commands remain available:
+./scripts/Publish-Windows.ps1 -Architecture arm64
+```
+
+From Bash, build Linux archives or macOS app bundles (build macOS on a Mac):
+
+```sh
+bash scripts/publish.sh linux-x64
+bash scripts/publish.sh linux-arm64
+bash scripts/publish.sh osx-arm64
+bash scripts/publish.sh osx-x64
+```
+
+Executables go under `artifacts/<runtime>/`. Bash packaging produces `artifacts/PartyTime-<runtime>.tar.gz` for Linux and macOS, containing a `PartyTime.app` bundle on macOS. Windows release assets are `PartyTime-win-<architecture>.exe`. VS Code build and publish tasks and the debugger target the Avalonia app.
+
+The CI workflow builds and runs portable checks on Windows, Linux, and macOS. Publishing a GitHub release builds all six runtime packages on the appropriate hosts and attaches them to the release. The release workflow also supports manual runs that upload workflow artifacts without publishing a release.
+
+## Verify changes
+
+```sh
+dotnet build PartyTime.csproj -c Release
+dotnet run --project Tests/PartyTime.Tests.csproj -c Release
+```
+
+The checks use Avalonia Headless with the real Skia renderer. They cover frequency isolation, onset detection, settings compatibility, image layouts and chroma key, the preview eyedropper, motion and monitor coordinates, cursor fading, preset behavior, screenshot timing and blends, transparent rendering, bulk editing, and settings control initialization. Rendered tabs and a preset gallery are written to `artifacts/feature-checks`.
+
+Native audio devices, screen permissions, input pass-through, compositor behavior, and macOS signing still need testing on the target desktop. A successful cross-publish does not verify those native behaviors.
+
+On Windows, also run `dotnet run --project Tests/PartyTime.Tests.csproj -c Release -- --native-smoke` to check real display enumeration, click-through window flags, capture exclusion, cursor coordinates, refresh-rate lookup, desktop capture, and WASAPI playback capture. This check uses a small offscreen test window.
+
+## Performance
+
+Rendering explicitly prefers hardware backends, with software fallbacks for compatibility. Effects use immutable Skia pictures, screen animation follows compositor frames, and previews pause while hidden. Capture devices and image resources are reused across settings edits and displays.
+
+See [performance measurements and reproduction commands](docs/performance.md) for the measured capture/recording improvements, raw benchmark data, and their limits. Audio analysis and capture coordination run on the CPU; visual composition and screenshot scaling use the GPU when available.
 
 ## Project layout
 
 | Folder | Responsibility |
 | --- | --- |
-| `Views/` | WPF windows and their code-behind |
-| `Controls/` | The live style preview control |
-| `Audio/` | System audio capture, frequency analysis, and audio data types |
-| `Visualization/` | Overlay windows, effect rendering, and screen color sampling |
-| `Settings/` | Visualizer preferences and local persistence |
-| `Interop/` | Win32 window placement, capture exclusion, the global hotkey, and Windows startup registration |
-| `Assets/` | App icons and project artwork |
-
-## Build a Windows executable
-
-In VS Code, press **Ctrl + Shift + B** to run **Publish PartyTime (Windows x64)**. For ARM devices, use **Terminal → Run Build Task → Publish PartyTime (Windows ARM64)**. From PowerShell, run:
-
-```powershell
-./scripts/Publish-Windows.ps1 -Architecture x64
-./scripts/Publish-Windows.ps1 -Architecture arm64
-```
-
-The self-contained executables are written to `artifacts/win-x64/PartyTime.exe` and `artifacts/win-arm64/PartyTime.exe`. Each publish task stops any PartyTime instance running from its own output directory before replacing the executable. Closing the controls only hides PartyTime in the tray; for a manual `dotnet publish`, choose **Exit PartyTime** from the tray first to avoid an access-denied error.
-
-Publishing a GitHub release builds and attaches executables for both architectures.
-
-## Verify changes
-
-Run `dotnet run --project Tests/PartyTime.Tests.csproj` on Windows to check frequency isolation, independent onset detection, settings compatibility, image spacing, bulk image edits, chroma key, the preview eyedropper, shape geometry, cursor fading and monitor coordinates, preset behavior, screen sample timing and blend modes, background capture, transparent blending in WPF and Direct2D, and control initialization. Rendered UI checks and a preset gallery are written to `artifacts/feature-checks`.
-
-Run `dotnet run --project Tests/PartyTime.Tests.csproj -c Release -- --benchmark-cursor` to measure cursor rendering time and managed allocations for each trail style. It uses a dense simulated trail on a 1,920 × 1,080 hardware render target; these timings measure rendering work, not end-to-end mouse input latency.
-
-Run `dotnet run --project Tests/PartyTime.Tests.csproj -c Release -- --benchmark-screen` to measure the Screen layer. It checks all six CPU blends, then real desktop capture, bitmap publication, GPU upload and drawing at a scheduled 30 FPS, plus idle and repeated-display fallback stress. Reports are written to `artifacts/benchmarks/screen-benchmark.json` and `.md`, including average and p95 frame work, CPU use, managed allocations, GC collections, memory, hardware, and capture backends. GPU timing waits for completion using a one-pixel readback; it includes synchronization overhead and does not measure GPU utilization or compositor latency. Audio, other effects, controls, and the WPF fallback are excluded. Desktop content is uncontrolled, and the repeated-primary case is not a physical dual-monitor test.
+| `Views/` | Avalonia window, shared control themes, settings and image editing |
+| `Controls/` | Animated preview and transparency checkerboard |
+| `Audio/` | System playback capture, FFT analysis, and audio data |
+| `Visualization/` | Avalonia overlay layers, scene effects, images, and background screen capture |
+| `Settings/` | Visual preferences, backward-compatible persistence, and presets |
+| `Interop/` | Platform window/input integration, single-instance signaling, and startup registration |
+| `Native/macOS/` | ScreenCaptureKit helper and macOS bundle metadata |
+| `scripts/` | Publishing and platform packaging |
 
 ## License
 

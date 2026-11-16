@@ -1,6 +1,7 @@
 using System.Linq;
-using System.Windows;
-using System.Windows.Controls;
+using Avalonia;
+using Avalonia.Interactivity;
+using Avalonia.Controls;
 using PartyTime.Settings;
 
 namespace PartyTime.Views;
@@ -40,9 +41,9 @@ public partial class ControlWindow
 
     private void RefreshMotionDescriptions()
     {
-        ShapesPanel.Visibility = _settings.ShapesEnabled ? Visibility.Visible : Visibility.Collapsed;
-        CursorTrailPanel.Visibility = _settings.CursorTrailEnabled ? Visibility.Visible : Visibility.Collapsed;
-        CursorShapePanel.Visibility = _settings.CursorTrail == CursorTrailStyle.Shapes ? Visibility.Visible : Visibility.Collapsed;
+        ShapesPanel.IsVisible = _settings.ShapesEnabled ? true : false;
+        CursorTrailPanel.IsVisible = _settings.CursorTrailEnabled ? true : false;
+        CursorShapePanel.IsVisible = _settings.CursorTrail == CursorTrailStyle.Shapes ? true : false;
         ShapeCountLabel.Text = $"Shapes · {_settings.ShapeCount}";
         ShapeSizeLabel.Text = $"Shape size · {_settings.ShapeSize}%";
         ShapeOpacityLabel.Text = $"Shape opacity · {_settings.ShapeOpacity}%";

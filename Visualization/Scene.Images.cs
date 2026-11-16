@@ -1,8 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Windows;
-using System.Windows.Media.Imaging;
+using Avalonia;
+using Avalonia.Media.Imaging;
+using BitmapSource = Avalonia.Media.Imaging.Bitmap;
 using PartyTime.Settings;
 
 namespace PartyTime.Visualization;
@@ -17,10 +18,17 @@ internal sealed partial class Scene
     private ImageGroup[] _stickerGroups = [];
     private ImageGroup[] _haloGroups = [];
     private ImageSprite[] _floatingSlots = [];
-    private bool HasDotReplacement => _images.Any(image => image.Settings.Layout == ImageLayout.ReplaceDots);
+    private bool _hasDotReplacement;
+    private bool HasDotReplacement => _hasDotReplacement;
+    private OverlayImageSettings[]? _appliedImages;
+    private CircleStyle _imageCircle;
+    private OverlayStyle _imageOverlay;
 
     private void ApplyImages(OverlayImageSettings[] images)
     {
+        if (ReferenceEquals(images, _appliedImages) && _imageCircle == _settings.Circle && _imageOverlay == _settings.Overlay) return;
+        _appliedImages = images; _imageCircle = _settings.Circle; _imageOverlay = _settings.Overlay;
+        _hasDotReplacement = images.Any(image => image.Enabled && image.Layout == ImageLayout.ReplaceDots);
         _images = images.Where(image => image.Enabled).Select(image => (Settings: image, Bitmap: OverlayImageStore.Load(image)))
             .Where(image => image.Bitmap != null).Select(image => new ImageSprite(image.Settings, image.Bitmap!)).ToArray();
         _imageSources = _images.Select(image => image.Bitmap).Distinct().ToArray();
@@ -129,9 +137,9 @@ internal sealed partial class Scene
 
     private static void DrawImageAt(ISceneDrawing drawing, BitmapSource bitmap, Point center, double size, double opacity)
     {
-        double scale = size / Math.Max(bitmap.PixelWidth, bitmap.PixelHeight);
-        double width = bitmap.PixelWidth * scale;
-        double height = bitmap.PixelHeight * scale;
+        double scale = size / Math.Max(bitmap.PixelSize.Width, bitmap.PixelSize.Height);
+        double width = bitmap.PixelSize.Width * scale;
+        double height = bitmap.PixelSize.Height * scale;
         drawing.DrawImage(bitmap, new Rect(center.X - width / 2, center.Y - height / 2, width, height), opacity);
     }
 }

@@ -1,35 +1,32 @@
 using System;
-using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Security;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Interop;
-using System.Windows.Media;
-using System.Windows.Threading;
-using Microsoft.Win32;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Interactivity;
+using Avalonia.Media;
+using Avalonia.Platform;
+using Avalonia.Threading;
 using PartyTime.Audio;
 using PartyTime.Interop;
 using PartyTime.Settings;
 using PartyTime.Visualization;
-using Forms = System.Windows.Forms;
 
 namespace PartyTime.Views;
 
 public partial class ControlWindow : Window
 {
-    private readonly Forms.NotifyIcon _tray;
-    private readonly Forms.ToolStripMenuItem _trayToggle;
+    private readonly TrayIcon _tray;
+    private readonly NativeMenuItem _trayToggle;
     private readonly SystemAudio _audio;
     private readonly DispatcherTimer _saveTimer;
     private VisualizerSettings _settings;
     private readonly bool _persistSettings;
     private Overlay? _overlay;
-    private HwndSource? _source;
-    private bool _hotkeyRegistered;
+    private IDisposable? _hotkey;
     private bool _exiting;
     private bool _ready;
 
@@ -40,12 +37,9 @@ public partial class ControlWindow : Window
         _settings = settings;
         _persistSettings = persistSettings;
         InitializeComponent();
-        _audio = new SystemAudio(Dispatcher);
+        _audio = new SystemAudio();
         _audio.StatusChanged += SetAudioStatus;
-        _saveTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
-        {
-            Interval = TimeSpan.FromMilliseconds(500)
-        };
+        _saveTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(500) };
         _saveTimer.Tick += (_, _) => SaveSettings();
         Preview.GetScreenColors = () => _overlay?.ScreenColors;
         InitializeCustomizationControls();
@@ -55,171 +49,159 @@ public partial class ControlWindow : Window
         RefreshDescriptions();
         ApplySettings();
         _ready = true;
-
-        var menu = new Forms.ContextMenuStrip();
-        menu.Items.Add("Open controls", null, (_, _) => OpenControls());
-        _trayToggle = new Forms.ToolStripMenuItem("Start party", null, (_, _) => ToggleParty());
-        menu.Items.Add(_trayToggle);
-        menu.Items.Add(new Forms.ToolStripSeparator());
-        menu.Items.Add("Exit PartyTime", null, (_, _) => ExitPartyTime());
-
-        using var iconStream = Application.GetResourceStream(new Uri("/Assets/PartyTime-v2.ico", UriKind.Relative)).Stream;
-        using var icon = new System.Drawing.Icon(iconStream);
-        _tray = new Forms.NotifyIcon
+        var menu = new NativeMenu();
+        var open = new NativeMenuItem("Open controls");
+        open.Click += (_, _) => OpenControls();
+        menu.Add(open);
+        _trayToggle = new NativeMenuItem("Start party");
+        _trayToggle.Click += (_, _) => ToggleParty();
+        menu.Add(_trayToggle);
+        menu.Add(new NativeMenuItemSeparator());
+        var exit = new NativeMenuItem("Exit PartyTime");
+        exit.Click += (_, _) => ExitPartyTime();
+        menu.Add(exit);
+        _tray = new TrayIcon { Icon = new WindowIcon(AssetLoader.Open(new Uri("avares://PartyTime/Assets/PartyTime-v2.ico"))),
+            Menu = menu, ToolTipText = "PartyTime · Off", IsVisible = true };
+        _tray.Clicked += (_, _) => OpenControls();
+        if (_persistSettings && Application.Current is { } app)
         {
-            Icon = (System.Drawing.Icon)icon.Clone(),
-            ContextMenuStrip = menu,
-            Text = "PartyTime · Off",
-            Visible = true
+            var icons = TrayIcon.GetIcons(app);
+            if (icons == null) TrayIcon.SetIcons(app, icons = new TrayIcons());
+            icons.Add(_tray);
+        }
+        Screens.Changed += OnDisplaysChanged;
+        Opened += (_, _) =>
+        {
+            if (!_persistSettings) return;
+            _hotkey ??= Desktop.WatchPartyShortcut(ToggleParty);
+            HotkeyLabel.Text = Desktop.ShortcutDescription;
         };
-        _tray.DoubleClick += (_, _) => OpenControls();
-        SystemEvents.DisplaySettingsChanged += OnDisplaysChanged;
+        if (!_persistSettings) return;
         RefreshStartupOption();
+        CloseBehaviorLabel.Text = CanHideToTray ? "Closes to the tray" : "Close to quit";
+        if (!CanHideToTray) StartupDescription.Text = "Starts PartyTime at sign-in. Controls stay visible so the app remains reachable without a tray host.";
     }
 
-    protected override void OnSourceInitialized(EventArgs e)
+    private bool CanHideToTray => (OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()) && _tray.NativeMenuExporter != null;
+
+    internal void ConfigureStartup(string[] args)
     {
-        base.OnSourceInitialized(e);
-        _source = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle);
-        _source?.AddHook(HandleMessage);
-        _hotkeyRegistered = _source != null && Desktop.RegisterPartyHotkey(_source.Handle);
-        if (!_hotkeyRegistered)
-            HotkeyLabel.Text = "Shortcut unavailable · Use the tray";
+        // Always keep controls reachable on desktops without a system tray host.
+        Opened += (_, _) =>
+        {
+            if (args.Contains(AppStartup.TrayArgument) && CanHideToTray) Hide();
+        };
     }
 
-    protected override void OnClosing(CancelEventArgs e)
+    protected override void OnClosing(WindowClosingEventArgs e)
     {
+        if (!_exiting && CanHideToTray)
+        {
+            e.Cancel = true;
+            Hide();
+        }
+        else if (!_exiting) { e.Cancel = true; _exiting = true; Dispatcher.UIThread.Post(ExitPartyTime); }
         base.OnClosing(e);
-        if (_exiting || Dispatcher.HasShutdownStarted)
-            return;
-
-        e.Cancel = true;
-        Hide();
     }
 
     protected override void OnClosed(EventArgs e)
     {
         _exiting = true;
         _samplePreviewTimer?.Stop();
-        if (_saveTimer.IsEnabled)
-            SaveSettings();
-        SystemEvents.DisplaySettingsChanged -= OnDisplaysChanged;
+        _samplePreviewClock?.Dispose();
+        SetSamplePreview(null);
+        _samplePreviewLayer.Dispose();
+        if (_saveTimer.IsEnabled) SaveSettings();
+        Screens.Changed -= OnDisplaysChanged;
+        _hotkey?.Dispose();
         _overlay?.Dispose();
         _audio.Dispose();
-        _tray.Visible = false;
-        _tray.ContextMenuStrip?.Dispose();
-        _tray.Icon?.Dispose();
+        if (Application.Current is { } app) TrayIcon.GetIcons(app)?.Remove(_tray);
         _tray.Dispose();
         base.OnClosed(e);
     }
 
-    private void ExitPartyTime()
+    internal void ExitPartyTime()
     {
         _exiting = true;
         StopParty();
-        if (_source is not null)
-        {
-            if (_hotkeyRegistered)
-                Desktop.UnregisterHotKey(_source.Handle, Desktop.PartyHotkey);
-            _source.RemoveHook(HandleMessage);
-        }
-        Application.Current.Shutdown();
+        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop) desktop.Shutdown();
     }
 
     internal void OpenControls()
     {
         Show();
-        if (WindowState == WindowState.Minimized)
-            WindowState = WindowState.Normal;
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
         Activate();
     }
 
     private void RefreshStartupOption()
     {
-        try
+        try { StartupToggle.IsChecked = AppStartup.IsEnabled(); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
         {
-            StartupToggle.IsChecked = WindowsStartup.IsEnabled();
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException)
-        {
-            Debug.WriteLine(ex);
             StartupToggle.IsEnabled = false;
-            ShowStartupError("PartyTime couldn’t read your Windows startup setting.");
+            ShowStartupError(ex.Message);
         }
     }
 
-    private void StartupClicked(object sender, RoutedEventArgs e)
+    private void StartupClicked(object? sender, RoutedEventArgs e)
     {
         bool enabled = StartupToggle.IsChecked == true;
-        try
+        try { AppStartup.SetEnabled(enabled); StartupError.IsVisible = false; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or System.Security.SecurityException)
         {
-            WindowsStartup.SetEnabled(enabled);
-            StartupError.Visibility = Visibility.Collapsed;
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException or InvalidOperationException)
-        {
-            Debug.WriteLine(ex);
             StartupToggle.IsChecked = !enabled;
-            ShowStartupError(ex is InvalidOperationException ? ex.Message : "PartyTime couldn’t change your Windows startup setting.");
+            ShowStartupError(ex.Message);
         }
     }
 
-    private void ShowStartupError(string message)
-    {
-        StartupError.Text = message;
-        StartupError.Visibility = Visibility.Visible;
-    }
-
-    private void ToggleClicked(object sender, RoutedEventArgs e) => ToggleParty();
+    private void ShowStartupError(string message) { StartupError.Text = message; StartupError.IsVisible = true; }
+    private void ToggleClicked(object? sender, RoutedEventArgs e) => ToggleParty();
 
     private void ToggleParty()
     {
-        if (_overlay != null)
-        {
-            StopParty();
-            return;
-        }
-
+        if (_overlay != null) { StopParty(); return; }
         try
         {
-            _overlay = new Overlay(_audio);
+            _overlay = new Overlay(_audio, this);
             _overlay.ApplySettings(_settings);
             StatusTitle.Text = "Party is on";
             StatusDot.Fill = Brushes.MediumSpringGreen;
             PartyButton.Content = "Stop _party";
-            _trayToggle.Text = "Stop party";
-            _tray.Text = "PartyTime · On";
+            _trayToggle.Header = "Stop party";
+            _tray.ToolTipText = "PartyTime · On";
             _audio.Start();
             UpdateSampleCaptureExclusion();
             RefreshColorSource();
+            UpdateSamplePreviewTimer();
         }
-        catch (Exception ex)
-        {
-            Debug.WriteLine(ex);
-            StopParty("Couldn’t start the desktop overlay.");
-        }
+        catch (Exception ex) { Debug.WriteLine(ex); StopParty(ex.Message); }
     }
 
     private void StopParty(string detail = "Play music, then start the overlay.")
     {
+        SetSamplePreview(null);
         _overlay?.Dispose();
         _overlay = null;
         UpdateSampleCaptureExclusion();
-        _audio.Dispose();
+        _audio.Stop();
         StatusTitle.Text = "Party is off";
         StatusDetail.Text = detail;
-        StatusDetail.ToolTip = null;
+        ToolTip.SetTip(StatusDetail, detail);
         StatusDot.Fill = Brushes.SlateGray;
         PartyButton.Content = "Start _party";
-        _trayToggle.Text = "Start party";
-        _tray.Text = "PartyTime · Off";
+        _trayToggle.Header = "Start party";
+        _tray.ToolTipText = "PartyTime · Off";
         RefreshColorSource();
+        RefreshSamplePreview();
+        UpdateSamplePreviewTimer();
     }
 
     private void SetAudioStatus(string detail)
     {
         StatusDetail.Text = detail;
-        StatusDetail.ToolTip = detail;
+        ToolTip.SetTip(StatusDetail, detail);
     }
 
     private void RestoreControls()
@@ -251,10 +233,10 @@ public partial class ControlWindow : Window
     }
 
     private static void SelectChoice<T>(Panel choices, T selected) where T : struct, Enum
-        => choices.Children.OfType<RadioButton>().First(option => (string)option.Tag == selected.ToString()).IsChecked = true;
+        => choices.Children.OfType<RadioButton>().First(option => (string)option.Tag! == selected.ToString()).IsChecked = true;
 
     private static T ReadChoice<T>(Panel choices) where T : struct, Enum
-        => Enum.Parse<T>((string)choices.Children.OfType<RadioButton>().First(option => option.IsChecked == true).Tag);
+        => Enum.Parse<T>((string)choices.Children.OfType<RadioButton>().First(option => option.IsChecked == true).Tag!);
 
     private void SettingsChanged(object sender, RoutedEventArgs e)
     {
@@ -266,8 +248,8 @@ public partial class ControlWindow : Window
         bool validRange = validLow && validHigh && FrequencyRange.IsValid(low, high);
         bool validFirst = VisualizerSettings.TryReadColor(FirstColorBox.Text, out Color first);
         bool validSecond = VisualizerSettings.TryReadColor(SecondColorBox.Text, out Color second);
-        RangeError.Visibility = validRange ? Visibility.Collapsed : Visibility.Visible;
-        ColorError.Visibility = validFirst && validSecond ? Visibility.Collapsed : Visibility.Visible;
+        RangeError.IsVisible = validRange ? false : true;
+        ColorError.IsVisible = validFirst && validSecond ? false : true;
 
         var next = _settings with
         {
@@ -332,7 +314,7 @@ public partial class ControlWindow : Window
         SizeValue.Text = $"{_settings.Size}%";
         ResponseValue.Text = $"{_settings.Response}%";
         BlendValue.Text = $"{_settings.ScreenBlend}%";
-        RangePanel.Visibility = _settings.Focus == FrequencyFocus.Custom ? Visibility.Visible : Visibility.Collapsed;
+        RangePanel.IsVisible = _settings.Focus == FrequencyFocus.Custom ? true : false;
         var range = _settings.GetRange();
         FocusDescription.Text = _settings.Focus switch
         {
@@ -344,9 +326,9 @@ public partial class ControlWindow : Window
             _ => "Responds to the whole mix, with extra weight on bass hits."
         };
 
-        PalettePanel.Visibility = _settings.ColorSource == ColorSource.Screen ? Visibility.Collapsed : Visibility.Visible;
-        CustomColorsPanel.Visibility = _settings.Theme == ColorTheme.Custom ? Visibility.Visible : Visibility.Collapsed;
-        BlendPanel.Visibility = _settings.ColorSource == ColorSource.Mix ? Visibility.Visible : Visibility.Collapsed;
+        PalettePanel.IsVisible = _settings.ColorSource == ColorSource.Screen ? false : true;
+        CustomColorsPanel.IsVisible = _settings.Theme == ColorTheme.Custom ? true : false;
+        BlendPanel.IsVisible = _settings.ColorSource == ColorSource.Mix ? true : false;
 
         VisualizerSettings.TryReadColor(_settings.FirstColor, out Color first);
         VisualizerSettings.TryReadColor(_settings.SecondColor, out Color second);
@@ -357,10 +339,12 @@ public partial class ControlWindow : Window
     private void ApplySettings()
     {
         _audio.Focus = _settings.GetRange();
+        SetSamplePreview(null);
         _overlay?.ApplySettings(_settings);
         UpdateSampleCaptureExclusion();
         Preview.ApplySettings(_settings);
         RefreshColorSource();
+        UpdateSamplePreviewTimer();
     }
 
     private void RefreshColorSource()
@@ -368,6 +352,8 @@ public partial class ControlWindow : Window
         SourceDescription.Text = _settings.ColorSource switch
         {
             ColorSource.Mix when _settings.ScreenBlend == 0 => "At 0%, Mix uses only your selected palette.",
+            ColorSource.Screen or ColorSource.Mix when !DesktopCapture.IsSupported
+                => "Screen colors are unavailable on this desktop. Using your selected palette.",
             ColorSource.Screen or ColorSource.Mix when _overlay is { CanSampleScreen: false }
                 => "Screen sampling is unavailable. Using your selected palette.",
             ColorSource.Screen => "Uses colors from your primary display while the party is on.",
@@ -389,54 +375,24 @@ public partial class ControlWindow : Window
             _settings.Save();
     }
 
-    private void PickColor(object sender, RoutedEventArgs e)
+    private async void PickColor(object sender, RoutedEventArgs e)
     {
         bool first = ReferenceEquals(sender, FirstSwatch);
         VisualizerSettings.TryReadColor(first ? _settings.FirstColor : _settings.SecondColor, out Color color);
-        using var picker = new Forms.ColorDialog
-        {
-            FullOpen = true,
-            Color = System.Drawing.Color.FromArgb(color.R, color.G, color.B)
-        };
-        if (picker.ShowDialog(new DialogOwner(new WindowInteropHelper(this).Handle)) != Forms.DialogResult.OK)
-            return;
-
-        var selected = Color.FromRgb(picker.Color.R, picker.Color.G, picker.Color.B);
-        (first ? FirstColorBox : SecondColorBox).Text = VisualizerSettings.ColorHex(selected);
-    }
-
-    private sealed class DialogOwner(IntPtr handle) : Forms.IWin32Window
-    {
-        public IntPtr Handle { get; } = handle;
+        var picker = new ColorPicker { Color = color, IsAlphaEnabled = false };
+        var accept = new Button { Content = "Use color", HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right };
+        var panel = new StackPanel { Spacing = 12, Margin = new Thickness(16), Children = { picker, accept } };
+        var dialog = new Window { Title = "Choose color", Width = 420, Height = 520, Content = panel,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner };
+        accept.Click += (_, _) => dialog.Close(true);
+        if (await dialog.ShowDialog<bool>(this))
+            (first ? FirstColorBox : SecondColorBox).Text = VisualizerSettings.ColorHex(picker.Color);
     }
 
     private void OnDisplaysChanged(object? sender, EventArgs e)
     {
-        Dispatcher.BeginInvoke(() =>
-        {
-            if (_exiting || _overlay == null)
-                return;
-
-            try
-            {
-                _overlay.RebuildScreens();
-                RefreshColorSource();
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine(ex);
-                StopParty("The display layout changed. Start the party again.");
-            }
-        });
-    }
-
-    private IntPtr HandleMessage(IntPtr window, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
-    {
-        if (message == Desktop.HotkeyMessage && wParam == Desktop.PartyHotkey)
-        {
-            handled = true;
-            ToggleParty();
-        }
-        return IntPtr.Zero;
+        if (_exiting || _overlay == null) return;
+        try { _overlay.RebuildScreens(); RefreshColorSource(); }
+        catch (Exception ex) { Debug.WriteLine(ex); StopParty("The display layout changed. Start the party again."); }
     }
 }

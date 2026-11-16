@@ -1,6 +1,7 @@
 using System;
-using System.Windows;
-using System.Windows.Media;
+using Avalonia;
+using Avalonia.Media;
+using Avalonia.Media.Immutable;
 using PartyTime.Audio;
 using PartyTime.Settings;
 
@@ -39,10 +40,10 @@ internal sealed partial class Scene
     private void DrawDoubleRail(ISceneDrawing drawing, Rect bounds, double unit, double opacity, double thickness)
     {
         double radius = unit * 0.028;
-        drawing.DrawRoundedRectangle(null, new Pen(SpectrumBrush(opacity), thickness), bounds, radius);
+        drawing.DrawRoundedRectangle(null, new ImmutablePen(SpectrumBrush(opacity), thickness), bounds, radius);
         double gap = unit * (0.021 + _drive * 0.017 + _pulse * 0.025);
-        bounds.Inflate(-gap, -gap);
-        drawing.DrawRoundedRectangle(null, new Pen(SpectrumBrush(opacity * 0.52), thickness * 0.65), bounds, radius);
+        bounds = bounds.Inflate(-gap);
+        drawing.DrawRoundedRectangle(null, new ImmutablePen(SpectrumBrush(opacity * 0.52), thickness * 0.65), bounds, radius);
     }
 
     private void DrawCorners(ISceneDrawing drawing, Rect bounds, double unit, double opacity, double thickness)
@@ -108,7 +109,7 @@ internal sealed partial class Scene
         for (int ring = 0; ring < 3; ring++)
         {
             double radius = unit * (0.09 + ring * 0.055 + _drive * 0.024 + _pulse * (0.03 + ring * 0.018));
-            var pen = new Pen(new SolidColorBrush(Alpha(_colors[ring], opacity * (1 - ring * 0.19))), thickness);
+            var pen = new ImmutablePen(new ImmutableSolidColorBrush(Alpha(_colors[ring], opacity * (1 - ring * 0.19))), thickness);
             drawing.DrawEllipse(null, pen, center, radius);
         }
     }
@@ -130,19 +131,19 @@ internal sealed partial class Scene
         }
 
         double thickness = Math.Clamp(unit * 0.004, 1.2, 6);
-        drawing.DrawCurve(segments[^1].End, segments, new Pen(SpectrumBrush(opacity * 0.28), thickness * 3),
-            new Pen(SpectrumBrush(opacity), thickness));
+        drawing.DrawCurve(segments[^1].End, segments, new ImmutablePen(SpectrumBrush(opacity * 0.28), thickness * 3),
+            new ImmutablePen(SpectrumBrush(opacity), thickness));
     }
 
     private void DrawDotHalo(ISceneDrawing drawing, Point center, double unit, double opacity)
     {
         double radius = unit * (0.15 + _drive * 0.03 + _pulse * 0.05);
-        drawing.DrawEllipse(null, new Pen(SpectrumBrush(opacity * 0.30), Math.Clamp(unit * 0.002, 0.8, 3)), center, radius);
+        drawing.DrawEllipse(null, new ImmutablePen(SpectrumBrush(opacity * 0.30), Math.Clamp(unit * 0.002, 0.8, 3)), center, radius);
         if (HasDotReplacement)
             return;
         for (int color = 0; color < _colors.Length; color++)
         {
-            var brush = new SolidColorBrush(Alpha(_colors[color], opacity));
+            var brush = new ImmutableSolidColorBrush(Alpha(_colors[color], opacity));
             int end = (color + 1) * _bands.Length / _colors.Length;
             for (int i = color * _bands.Length / _colors.Length; i < end; i++)
             {
@@ -187,8 +188,7 @@ internal sealed partial class Scene
         for (int i = 0; i < corners.Length; i++)
         {
             Color color = _colors[i];
-            var brush = new RadialGradientBrush(Alpha(color, opacity * 0.7), Alpha(color, 0));
-            brush.GradientStops.Insert(1, new GradientStop(Alpha(color, opacity * 0.18), 0.56));
+            var brush = SceneBrush.Radial(new(0, Alpha(color, opacity * 0.7)), new(0.56, Alpha(color, opacity * 0.18)), new(1, Alpha(color, 0)));
             drawing.DrawEllipse(brush, null, corners[i], radius);
         }
     }
@@ -200,7 +200,7 @@ internal sealed partial class Scene
         double phase = Math.Tau * _phase / 4;
         for (int color = 0; color < _colors.Length; color++)
         {
-            var brush = new SolidColorBrush(Alpha(Mix(_colors[color], Colors.White, 0.25), opacity * 0.9));
+            var brush = new ImmutableSolidColorBrush(Alpha(Mix(_colors[color], Colors.White, 0.25), opacity * 0.9));
             for (int spark = 0; spark < 12; spark++)
             {
                 // Distribute the points evenly without storing particles or re-seeding each frame.
@@ -218,18 +218,10 @@ internal sealed partial class Scene
     {
         double bandHeight = unit * (0.18 + _pulse * 0.14);
         double y = (height + bandHeight) * (_phase / 4) - bandHeight;
-        var brush = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(0, 1) };
-        brush.GradientStops.Add(new GradientStop(Alpha(_colors[0], 0), 0));
-        brush.GradientStops.Add(new GradientStop(Alpha(_colors[0], opacity * 0.19), 0.40));
-        brush.GradientStops.Add(new GradientStop(Alpha(_colors[2], opacity * 0.40), 0.72));
-        brush.GradientStops.Add(new GradientStop(Alpha(_colors[2], 0), 1));
+        var brush = SceneBrush.Linear(new Point(0, 0), new Point(0, 1), new(0, Alpha(_colors[0], 0)), new(0.40, Alpha(_colors[0], opacity * 0.19)), new(0.72, Alpha(_colors[2], opacity * 0.40)), new(1, Alpha(_colors[2], 0)));
         drawing.DrawRectangle(brush, new Rect(0, y, width, bandHeight));
     }
 
-    private static Pen RoundedPen(Color color, double opacity, double thickness)
-        => new(new SolidColorBrush(Alpha(color, opacity)), thickness)
-        {
-            StartLineCap = PenLineCap.Round,
-            EndLineCap = PenLineCap.Round
-        };
+    private static IPen RoundedPen(Color color, double opacity, double thickness)
+        => new ImmutablePen(new ImmutableSolidColorBrush(Alpha(color, opacity)), thickness, lineCap: PenLineCap.Round);
 }

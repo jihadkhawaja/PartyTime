@@ -2,8 +2,9 @@ using System;
 using System.Diagnostics;
 using System.Linq;
 using Vector3 = System.Numerics.Vector3;
-using System.Windows;
-using System.Windows.Media;
+using Avalonia;
+using Avalonia.Media;
+using Avalonia.Media.Immutable;
 using PartyTime.Audio;
 using PartyTime.Settings;
 
@@ -118,7 +119,7 @@ internal sealed partial class Scene
     }
 
     public void Draw(DrawingContext drawing, double width, double height, Point desktopOrigin = default, double dpiX = 1, double dpiY = 1)
-        => Draw(new WpfSceneDrawing(drawing), width, height, desktopOrigin, dpiX, dpiY);
+        => Draw(new AvaloniaSceneDrawing(drawing), width, height, desktopOrigin, dpiX, dpiY);
 
     public void Draw(ISceneDrawing drawing, double width, double height, Point desktopOrigin = default, double dpiX = 1, double dpiY = 1)
     {
@@ -233,7 +234,7 @@ internal sealed partial class Scene
             double progress = Math.Clamp(_beatAge / 0.45, 0, 1);
             double inset = rail + depth * (0.1 + 0.72 * progress);
             double alpha = Intensity * _beatStrength * 0.58 * (1 - progress) * (1 - progress);
-            var pen = new Pen(new SolidColorBrush(Alpha(Mix(_colors[1], _colors[3], 0.5), alpha)), 1.4);
+            var pen = new ImmutablePen(new ImmutableSolidColorBrush(Alpha(Mix(_colors[1], _colors[3], 0.5), alpha)), 1.4);
             drawing.DrawRoundedRectangle(null, pen, new Rect(inset, inset, width - 2 * inset, height - 2 * inset), 17);
         }
     }
@@ -249,11 +250,7 @@ internal sealed partial class Scene
             _ => (new Rect(0, 0, depth, height), new Point(0, 0), new Point(1, 0), new Point(0, 1), new Point(0, 0))
         };
 
-        var vignette = new LinearGradientBrush { StartPoint = outer, EndPoint = inner };
-        vignette.GradientStops.Add(new GradientStop(Alpha(glow, strength), 0));
-        vignette.GradientStops.Add(new GradientStop(Alpha(glow, strength * 0.44), 0.22));
-        vignette.GradientStops.Add(new GradientStop(Alpha(glow, strength * 0.12), 0.58));
-        vignette.GradientStops.Add(new GradientStop(Alpha(glow, 0), 1));
+        var vignette = SceneBrush.Linear(outer, inner, new(0, Alpha(glow, strength)), new(0.22, Alpha(glow, strength * 0.44)), new(0.58, Alpha(glow, strength * 0.12)), new(1, Alpha(glow, 0)));
         drawing.DrawRectangle(vignette, area);
 
         Rect strip = edge switch
@@ -264,10 +261,7 @@ internal sealed partial class Scene
             _ => new Rect(0, 0, rail, height)
         };
         double railAlpha = Math.Min(0.95, strength * 1.55);
-        var highlight = new LinearGradientBrush { StartPoint = alongStart, EndPoint = alongEnd };
-        highlight.GradientStops.Add(new GradientStop(Alpha(start, railAlpha), 0));
-        highlight.GradientStops.Add(new GradientStop(Alpha(Mix(glow, Colors.White, 0.33), railAlpha * 0.9), 0.53));
-        highlight.GradientStops.Add(new GradientStop(Alpha(end, railAlpha), 1));
+        var highlight = SceneBrush.Linear(alongStart, alongEnd, new(0, Alpha(start, railAlpha)), new(0.53, Alpha(Mix(glow, Colors.White, 0.33), railAlpha * 0.9)), new(1, Alpha(end, railAlpha)));
         drawing.DrawRectangle(highlight, strip);
     }
 
@@ -278,7 +272,7 @@ internal sealed partial class Scene
         double barWidth = Math.Max(1, Math.Min(14, step * 0.42));
         double start = (width - span) / 2;
         double opacity = Intensity * (0.38 + _pulse * 0.40);
-        var brush = new LinearGradientBrush(Alpha(color, opacity), Alpha(color, 0.10 * opacity),
+        var brush = SceneBrush.Linear(Alpha(color, opacity), Alpha(color, 0.10 * opacity),
             new Point(0, top ? 0 : 1), new Point(0, top ? 1 : 0));
 
         for (int i = 0; i < _bands.Length; i++)
@@ -299,17 +293,14 @@ internal sealed partial class Scene
         double radius = unit * (0.16 + _drive * 0.042 + _pulse * 0.044);
         double haloRadius = radius + unit * 0.07;
         double rim = radius / haloRadius;
-        var halo = new RadialGradientBrush();
-        halo.GradientStops.Add(new GradientStop(Alpha(_colors[2], 0), rim - 0.2));
-        halo.GradientStops.Add(new GradientStop(Alpha(_colors[2], opacity * 0.43), rim));
-        halo.GradientStops.Add(new GradientStop(Alpha(_colors[2], 0), 1));
+        var halo = SceneBrush.Radial(new(rim - 0.2, Alpha(_colors[2], 0)), new(rim, Alpha(_colors[2], opacity * 0.43)), new(1, Alpha(_colors[2], 0)));
         drawing.DrawEllipse(halo, null, center, haloRadius);
-        drawing.DrawEllipse(null, new Pen(SpectrumBrush(opacity), Math.Clamp(unit * 0.003, 1, 5)), center, radius);
+        drawing.DrawEllipse(null, new ImmutablePen(SpectrumBrush(opacity), Math.Clamp(unit * 0.003, 1, 5)), center, radius);
 
         for (int i = 0; i < 4; i++)
         {
-            var pen = new Pen(new SolidColorBrush(Alpha(_colors[i], opacity * 0.94)),
-                Math.Clamp(unit * 0.0035, 1, 6)) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
+            var pen = new ImmutablePen(new ImmutableSolidColorBrush(Alpha(_colors[i], opacity * 0.94)),
+                Math.Clamp(unit * 0.0035, 1, 6), lineCap: PenLineCap.Round);
             int first = i * _bands.Length / 4;
             int end = (i + 1) * _bands.Length / 4;
             for (int band = first; band < end; band++)
@@ -329,7 +320,7 @@ internal sealed partial class Scene
         double span = width * 0.53 * Size;
         double step = span / _bands.Length;
         double barWidth = Math.Max(1, step * 0.53);
-        var brush = new LinearGradientBrush(Alpha(_colors[0], Intensity * 0.85), Alpha(_colors[2], Intensity * 0.73),
+        var brush = SceneBrush.Linear(Alpha(_colors[0], Intensity * 0.85), Alpha(_colors[2], Intensity * 0.73),
             new Point(0, 0), new Point(0, 1));
         for (int i = 0; i < _bands.Length; i++)
         {
@@ -359,12 +350,12 @@ internal sealed partial class Scene
         }
         double opacity = Intensity * Math.Min(1, _level * 1.4 + _pulse * 0.55);
         double thickness = Math.Clamp(Math.Min(width, height) * 0.0035, 1.2, 7);
-        drawing.DrawCurve(new Point(start, center), segments, new Pen(SpectrumBrush(opacity * 0.24), thickness * 3),
-            new Pen(SpectrumBrush(opacity), thickness));
+        drawing.DrawCurve(new Point(start, center), segments, new ImmutablePen(SpectrumBrush(opacity * 0.24), thickness * 3),
+            new ImmutablePen(SpectrumBrush(opacity), thickness));
     }
 
-    private LinearGradientBrush SpectrumBrush(double opacity)
-        => new(Alpha(_colors[0], opacity), Alpha(_colors[2], opacity), new Point(0, 0), new Point(1, 1));
+    private ImmutableLinearGradientBrush SpectrumBrush(double opacity)
+        => SceneBrush.Linear(Alpha(_colors[0], opacity), Alpha(_colors[2], opacity), new Point(0, 0), new Point(1, 1));
 
     private static double Follow(double current, double target, double elapsed, double attack, double release)
         => current + (target - current) * (1 - Math.Exp(-elapsed / (target > current ? attack : release)));

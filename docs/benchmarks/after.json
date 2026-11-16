@@ -1,0 +1,126 @@
+{
+  "Runtime": ".NET 10.0.14",
+  "OS": "Microsoft Windows 10.0.26300",
+  "results": [
+    {
+      "name": "blend-Normal-zoom-1",
+      "meanMs": 0.3580737500000001,
+      "p95Ms": 0.5817,
+      "bytesPerFrame": 8
+    },
+    {
+      "name": "blend-Normal-zoom-1.04",
+      "meanMs": 1.4811249999999998,
+      "p95Ms": 2.0685,
+      "bytesPerFrame": 8
+    },
+    {
+      "name": "blend-Additive-zoom-1",
+      "meanMs": 0.3687775,
+      "p95Ms": 0.5902,
+      "bytesPerFrame": 8
+    },
+    {
+      "name": "blend-Additive-zoom-1.04",
+      "meanMs": 7.135172500000003,
+      "p95Ms": 8.1772,
+      "bytesPerFrame": 8
+    },
+    {
+      "name": "blend-Screen-zoom-1",
+      "meanMs": 0.28233125,
+      "p95Ms": 0.4211,
+      "bytesPerFrame": 8
+    },
+    {
+      "name": "blend-Screen-zoom-1.04",
+      "meanMs": 2.00472625,
+      "p95Ms": 2.349,
+      "bytesPerFrame": 8
+    },
+    {
+      "name": "blend-Multiply-zoom-1",
+      "meanMs": 0.2713562499999999,
+      "p95Ms": 0.4414,
+      "bytesPerFrame": 8
+    },
+    {
+      "name": "blend-Multiply-zoom-1.04",
+      "meanMs": 1.8320149999999995,
+      "p95Ms": 2.5126,
+      "bytesPerFrame": 8
+    },
+    {
+      "name": "blend-Difference-zoom-1",
+      "meanMs": 0.17040749999999996,
+      "p95Ms": 0.2805,
+      "bytesPerFrame": 8
+    },
+    {
+      "name": "blend-Difference-zoom-1.04",
+      "meanMs": 6.941084999999998,
+      "p95Ms": 8.1383,
+      "bytesPerFrame": 8
+    },
+    {
+      "name": "blend-Negative-zoom-1",
+      "meanMs": 0.2106550000000001,
+      "p95Ms": 0.3448,
+      "bytesPerFrame": 8
+    },
+    {
+      "name": "blend-Negative-zoom-1.04",
+      "meanMs": 0.9445987499999997,
+      "p95Ms": 1.4752,
+      "bytesPerFrame": 8
+    },
+    {
+      "name": "record-Neon party",
+      "meanMs": 0.16743200000000005,
+      "p95Ms": 0.2459,
+      "bytesPerFrame": 16720
+    },
+    {
+      "name": "record-Geometry dance",
+      "meanMs": 0.06917900000000003,
+      "p95Ms": 0.0939,
+      "bytesPerFrame": 1968
+    },
+    {
+      "name": "record-Stardust",
+      "meanMs": 0.16077400000000006,
+      "p95Ms": 0.249,
+      "bytesPerFrame": 1072
+    },
+    {
+      "name": "record-Heartbeat",
+      "meanMs": 0.02119599999999999,
+      "p95Ms": 0.0384,
+      "bytesPerFrame": 1072
+    },
+    {
+      "name": "record-Aurora rain",
+      "meanMs": 0.046998000000000026,
+      "p95Ms": 0.0636,
+      "bytesPerFrame": 5240
+    },
+    {
+      "name": "record-Cosmic spiral",
+      "meanMs": 0.09850899999999997,
+      "p95Ms": 0.1408,
+      "bytesPerFrame": 2992
+    },
+    {
+      "name": "record-Minimal glow",
+      "meanMs": 0.01704999999999998,
+      "p95Ms": 0.0189,
+      "bytesPerFrame": 3856
+    },
+    {
+      "name": "record-Cursor comet",
+      "meanMs": 0.20988800000000002,
+      "p95Ms": 0.4178,
+      "bytesPerFrame": 21736
+    }
+  ]
+}

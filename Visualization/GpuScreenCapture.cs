@@ -1,16 +1,16 @@
 using System;
-using System.Drawing;
+using Rectangle = Avalonia.PixelRect;
 using Vortice;
 using Vortice.Direct2D1;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
-using Color = System.Windows.Media.Color;
 using static Vortice.Direct2D1.D2D1;
 using static Vortice.Direct3D11.D3D11;
 
 namespace PartyTime.Visualization;
 
+[System.Runtime.Versioning.SupportedOSPlatform("windows")]
 internal sealed class GpuScreenCapture : IDisposable
 {
     private readonly ID3D11Device _device = null!;
@@ -24,6 +24,7 @@ internal sealed class GpuScreenCapture : IDisposable
     private readonly int _width, _height;
     private bool _ownsFrame;
     public bool HasFrame { get; private set; }
+    public bool Changed { get; private set; }
 
     private GpuScreenCapture(IDXGIAdapter adapter, IDXGIOutput1 output, Rectangle bounds, int width, int height)
     {
@@ -77,7 +78,7 @@ internal sealed class GpuScreenCapture : IDisposable
                     {
                         var description = output.Description;
                         var rect = description.DesktopCoordinates;
-                        if (!description.AttachedToDesktop || rect.Left != bounds.Left || rect.Top != bounds.Top
+                        if (!description.AttachedToDesktop || rect.Left != bounds.X || rect.Top != bounds.Y
                             || rect.Right != bounds.Right || rect.Bottom != bounds.Bottom)
                             continue;
 
@@ -93,24 +94,10 @@ internal sealed class GpuScreenCapture : IDisposable
         return null;
     }
 
-    public unsafe bool TryReadPalette(out Color[]? palette)
-    {
-        palette = null;
-        if (!UpdateFrame()) return false;
-        var mapped = _readback.Map(MapOptions.Read);
-        try
-        {
-            int stride = (int)mapped.Pitch;
-            var pixels = new ReadOnlySpan<byte>((void*)mapped.Bits, stride * _height);
-            palette = ScreenColorSampler.ExtractPalette(pixels, stride);
-        }
-        finally { _readback.Unmap(); }
-        return true;
-    }
-
     public unsafe bool TryReadPixels(Span<byte> pixels)
     {
-        if (!UpdateFrame()) return false;
+        Changed = UpdateFrame();
+        if (!HasFrame) return false;
         var mapped = _readback.Map(MapOptions.Read);
         try
         {
@@ -141,7 +128,7 @@ internal sealed class GpuScreenCapture : IDisposable
             _context.DrawBitmap(_sourceBitmap,
                 new RawRectF(0, 0, _width, _height),
                 1, _width == ScreenColorSampler.SampleWidth ? Vortice.Direct2D1.InterpolationMode.NearestNeighbor
-                    : Vortice.Direct2D1.InterpolationMode.Linear, null, null);
+                    : Vortice.Direct2D1.InterpolationMode.HighQualityCubic, null, null);
             _context.EndDraw().CheckError();
         }
 
