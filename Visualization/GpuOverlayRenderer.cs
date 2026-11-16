@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using Vortice.Direct2D1;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
@@ -50,8 +51,9 @@ internal sealed class GpuOverlayRenderer : IDisposable
         }
     }
 
-    public void Draw(int displayIndex, Scene? scene, bool redrawBase, bool drawCursor, bool cacheBase)
-        => _surfaces[displayIndex].Draw(scene, redrawBase, drawCursor, cacheBase);
+    public void Draw(int displayIndex, Scene? scene, bool redrawBase, bool drawCursor, bool cacheBase,
+        BitmapSource? sample = null, double sampleOpacity = 0)
+        => _surfaces[displayIndex].Draw(scene, redrawBase, drawCursor, cacheBase, sample, sampleOpacity);
 
     public void Dispose()
     {
@@ -79,6 +81,7 @@ internal sealed class GpuOverlayRenderer : IDisposable
         private readonly ID2D1Bitmap1 _bitmap = null!;
         private bool _visible;
         private readonly GpuSceneLayer _baseLayer;
+        private readonly GpuScreenSampleLayer _sampleLayer;
 
         public Surface(GpuOverlayRenderer renderer, IDXGIFactory2 factory, OverlayWindow window, Rectangle bounds)
         {
@@ -86,6 +89,7 @@ internal sealed class GpuOverlayRenderer : IDisposable
             _window = window;
             _bounds = bounds;
             _baseLayer = new GpuSceneLayer(renderer._context, renderer._drawing, bounds.Width, bounds.Height);
+            _sampleLayer = new GpuScreenSampleLayer(renderer._context);
             try
             {
                 _swapChain = factory.CreateSwapChainForComposition(renderer._device, new SwapChainDescription1
@@ -119,7 +123,7 @@ internal sealed class GpuOverlayRenderer : IDisposable
             }
         }
 
-        public void Draw(Scene? scene, bool redrawBase, bool drawCursor, bool cacheBase)
+        public void Draw(Scene? scene, bool redrawBase, bool drawCursor, bool cacheBase, BitmapSource? sample, double sampleOpacity)
         {
             var context = _renderer._context;
             var dpi = VisualTreeHelper.GetDpi(_window);
@@ -130,13 +134,15 @@ internal sealed class GpuOverlayRenderer : IDisposable
             else
                 _baseLayer.Clear();
             bool baseVisible = cacheBase ? _baseLayer.Visible : scene?.BaseVisible == true;
-            if (!baseVisible && !drawCursor && !_visible)
+            bool sampleVisible = sample != null && sampleOpacity > 0;
+            if (!baseVisible && !sampleVisible && !drawCursor && !_visible)
                 return;
             context.Target = _bitmap;
             context.BeginDraw();
             try
             {
                 context.Clear(new Color4(0, 0, 0, 0));
+                _sampleLayer.Draw(sample, sampleOpacity, width, height);
                 if (cacheBase)
                     _baseLayer.Draw(width, height);
                 else if (baseVisible)
@@ -157,13 +163,14 @@ internal sealed class GpuOverlayRenderer : IDisposable
             if (present == Vortice.DXGI.ResultCode.WasStillDrawing)
                 return;
             present.CheckError();
-            _visible = baseVisible || drawCursor;
+            _visible = baseVisible || sampleVisible || drawCursor;
         }
 
         public void Dispose()
         {
             _target?.SetRoot(null);
             _baseLayer.Dispose();
+            _sampleLayer.Dispose();
             _bitmap?.Dispose();
             _visual?.Dispose();
             _target?.Dispose();

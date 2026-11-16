@@ -39,6 +39,11 @@ internal static partial class Program
                 RunCursorBenchmark();
                 return 0;
             }
+            if (args.Contains("--benchmark-screen"))
+            {
+                RunScreenBenchmark();
+                return 0;
+            }
             RunChecks();
             return 0;
         }
@@ -59,6 +64,7 @@ internal static partial class Program
         CheckImagePlacement(imagePath);
         CheckChromaKey();
         CheckMotion();
+        CheckScreenSamples();
         CheckPresets();
         CheckTransparency(imagePath);
         CheckGpu(imagePath);
@@ -442,6 +448,7 @@ internal static partial class Program
         CheckBulkControls(imagePath);
         CheckOverlayComposition();
         CheckMotionControls(imagePath);
+        CheckSampleControls();
         app.Shutdown();
     }
 

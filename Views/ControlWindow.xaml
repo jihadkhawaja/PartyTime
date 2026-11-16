@@ -457,6 +457,35 @@
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
+            <TabItem Header="Screen">
+                <ScrollViewer Style="{StaticResource SettingsScroll}">
+                    <StackPanel>
+                        <TextBlock Text="BEAT-SYNCED SCREEN SAMPLES" Style="{StaticResource Eyebrow}" Margin="0,0,0,7"/>
+                        <CheckBox x:Name="ScreenSamplesToggle" Content="Overlay screen samples" Checked="SettingsChanged" Unchecked="SettingsChanged"/>
+                        <TextBlock Text="Freeze a screenshot from each display, pulse it with the music, then jump to a fresh sample after the chosen number of beats." Style="{StaticResource HelpText}" Margin="0,5,0,10"/>
+                        <StackPanel x:Name="ScreenSamplesPanel" Visibility="Collapsed">
+                            <TextBlock Text="Overlay effect"/>
+                            <ComboBox x:Name="SampleBlendPicker" Style="{StaticResource Selection}" SelectionChanged="SettingsChanged" AutomationProperties.Name="Screen sample blend effect"/>
+                            <TextBlock x:Name="SampleBlendDescription" Style="{StaticResource HelpText}" Margin="0,0,0,9"/>
+                            <TextBlock Text="Beat source"/>
+                            <ComboBox x:Name="SampleReactionPicker" Style="{StaticResource Selection}" SelectionChanged="SettingsChanged" AutomationProperties.Name="Screen sample beat source"/>
+                            <TextBlock x:Name="SampleBeatsLabel"/>
+                            <Slider x:Name="SampleBeatsSlider" Minimum="1" Maximum="8" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="SettingsChanged" AutomationProperties.Name="Beats per screen sample"/>
+                            <TextBlock x:Name="SampleOpacityLabel" Margin="0,7,0,0"/>
+                            <Slider x:Name="SampleOpacitySlider" Minimum="0" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="SettingsChanged" AutomationProperties.Name="Screen sample opacity"/>
+                            <TextBlock x:Name="SampleZoomLabel" Margin="0,7,0,0"/>
+                            <Slider x:Name="SampleZoomSlider" Minimum="0" Maximum="12" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="SettingsChanged" AutomationProperties.Name="Screen sample beat zoom"/>
+                            <TextBlock x:Name="SampleFadeLabel" Margin="0,7,0,0"/>
+                            <Slider x:Name="SampleFadeSlider" Minimum="150" Maximum="2000" TickFrequency="50" IsSnapToTickEnabled="True" ValueChanged="SettingsChanged" AutomationProperties.Name="Screen sample fade time"/>
+                        </StackPanel>
+                        <Border x:Name="SamplePreviewHost" Background="#090810" CornerRadius="7" Margin="0,12,0,7" ClipToBounds="True">
+                            <Image x:Name="SamplePreview" Height="116" Stretch="Uniform" AutomationProperties.Name="Primary display screen sample preview"/>
+                        </Border>
+                        <TextBlock x:Name="SampleStatus" Style="{StaticResource HelpText}"/>
+                        <TextBlock Text="Samples stay in memory and clear when stopped. Screen sampling excludes PartyTime from screenshots and recordings to prevent feedback." Style="{StaticResource HelpText}" Margin="0,8,0,0"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
             <TabItem Header="Motion">
                 <ScrollViewer Style="{StaticResource SettingsScroll}">
                     <StackPanel>

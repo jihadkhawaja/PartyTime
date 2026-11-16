@@ -27,12 +27,17 @@ dotnet run --project PartyTime.csproj
 | --- | --- |
 | **Visuals** | Apply a visual preset or mix bars and waves, circles, borders, and overlay effects. Set the size and intensity, and choose 20, 30, 45, or 60 FPS or **Match display**. |
 | **Images** | Add PNG, JPEG, or BMP images as stickers, image halos, floating particles, or replacements for dots and sparks. Set each image's size, opacity, copies, position, and audio range, and remove a background color with chroma key. |
+| **Screen** | Capture screenshots on beats and blend them over each display. Set the effect, beat source, beats per sample, opacity, zoom, and fade time. |
 | **Motion** | Toggle a mouse cursor trail and an independent animated shape layer. Choose trail style, shape, lifetime, and size; customize shape type, motion, fill, count, size, and opacity. |
 | **Audio** | Focus on Full Mix, Bass, Vocals, Mids, Treble, or a custom range from 40 to 13,000 Hz. Assign separate frequency ranges to bars, circles, borders, overlay effects, shapes, and cursor pulses. Use **Response** to adjust how strongly the visuals move. |
 | **Colors** | Pick Neon, Sunset, Aurora, or two custom colors. **Screen** samples your primary display, and **Mix** blends those colors with your palette. |
 | **App** | Turn on **Start with Windows** to launch PartyTime in the system tray at sign-in. This is off by default. |
 
-Each visual layer has its own **None** option. Try **Edge bars**, **Radial wave**, **Double rail**, and **Sparks** together. For a border-only effect, pick a border, set the other three layers to **None**, and turn off the Motion layers. To make the overlay follow voices more closely, choose **Audio → Vocals**, which emphasizes the 300–3,400 Hz range.
+Each visual layer has its own **None** option. Try **Edge bars**, **Radial wave**, **Double rail**, and **Sparks** together. For a border-only effect, pick a border, set the other three layers to **None**, and turn off the Motion and Screen layers. To make the overlay follow voices more closely, choose **Audio → Vocals**, which emphasizes the 300–3,400 Hz range.
+
+In **Screen**, enable **Overlay screen samples**, start the party, and play audio. PartyTime freezes a screenshot from each display on the first detected beat, holds it for **1–8 beats**, then jumps to a fresh screenshot. Intermediate beats pulse the held sample with a slight zoom and renewed opacity; **Beat zoom** at 0% keeps it still. Choose **Low · bass**, **Mid · instruments**, **High · treble**, **Full mix**, or **Follow focus** as the beat source. Adjust opacity and the 150–2,000 ms fade after each beat. The sample layer works with all other visual layers off and fades completely during silence.
+
+Sample effects include **Normal** (a screenshot echo), **Additive** (a bright sum), **Screen** (a softer lightening blend), **Multiply** (a darker blend), **Difference** (changes between the held sample and current desktop), and **Negative** (inverted sample colors). Each display uses its own screenshot; the tab previews the primary display. Capture uses GPU desktop duplication and GPU downscaling where available, reusing unchanged desktop frames; rotated displays and unavailable GPU capture use a GDI fallback. Capture and CPU blending run in the background at up to 30 FPS, with images scaled to at most 960 pixels on their longer side. Screenshots stay in memory and clear when the feature or party is stopped. The feature requires Windows 10 version 2004 or later and capture exclusion support. While active, PartyTime excludes its overlays and controls from screenshots and recordings to prevent feedback.
 
 In **Visuals → Visual presets**, choose **Neon party**, **Geometry dance**, **Stardust**, **Heartbeat**, **Aurora rain**, **Cosmic spiral**, **Minimal glow**, or **Cursor comet**, then click **Apply preset**. Each preset combines layers, color palettes, and audio assignments. Presets keep your imported images and their customization, audio focus, response, and frame rate. All preset settings can be edited afterward.
 
@@ -62,7 +67,7 @@ Visual settings are saved in `%LOCALAPPDATA%\PartyTime\settings.json`. If you mo
 
 - PartyTime works over the Windows desktop, including browser fullscreen and borderless fullscreen windows. Exclusive fullscreen apps and the Windows secure desktop can bypass desktop overlays.
 - Audio is analyzed in memory. Apps routed to a different playback device are outside the captured mix.
-- **Screen** and **Mix** sample colors locally while the overlay is active. They exclude the overlay from sampling to prevent color feedback, so it may be hidden from screenshots and recordings. Use **Palette** mode when you want it visible in captures.
+- **Screen** and **Mix** sample colors locally while the overlay is active. They exclude the overlay from sampling to prevent color feedback, so it may be hidden from screenshots and recordings. Use **Palette** mode with **Overlay screen samples** disabled when you want it visible in captures.
 
 ## Project layout
 
@@ -91,9 +96,11 @@ Publishing a GitHub release builds and attaches executables for both architectur
 
 ## Verify changes
 
-Run `dotnet run --project Tests/PartyTime.Tests.csproj` on Windows to check frequency isolation, independent onset detection, settings compatibility, image spacing, bulk image edits, chroma key, the preview eyedropper, shape geometry, cursor fading and monitor coordinates, preset behavior, transparent blending in WPF and Direct2D, and control initialization. Rendered UI checks and a preset gallery are written to `artifacts/feature-checks`.
+Run `dotnet run --project Tests/PartyTime.Tests.csproj` on Windows to check frequency isolation, independent onset detection, settings compatibility, image spacing, bulk image edits, chroma key, the preview eyedropper, shape geometry, cursor fading and monitor coordinates, preset behavior, screen sample timing and blend modes, background capture, transparent blending in WPF and Direct2D, and control initialization. Rendered UI checks and a preset gallery are written to `artifacts/feature-checks`.
 
 Run `dotnet run --project Tests/PartyTime.Tests.csproj -c Release -- --benchmark-cursor` to measure cursor rendering time and managed allocations for each trail style. It uses a dense simulated trail on a 1,920 × 1,080 hardware render target; these timings measure rendering work, not end-to-end mouse input latency.
+
+Run `dotnet run --project Tests/PartyTime.Tests.csproj -c Release -- --benchmark-screen` to measure the Screen layer. It checks all six CPU blends, then real desktop capture, bitmap publication, GPU upload and drawing at a scheduled 30 FPS, plus idle and repeated-display fallback stress. Reports are written to `artifacts/benchmarks/screen-benchmark.json` and `.md`, including average and p95 frame work, CPU use, managed allocations, GC collections, memory, hardware, and capture backends. GPU timing waits for completion using a one-pixel readback; it includes synchronization overhead and does not measure GPU utilization or compositor latency. Audio, other effects, controls, and the WPF fallback are excluded. Desktop content is uncontrolled, and the repeated-primary case is not a physical dual-monitor test.
 
 ## License
 

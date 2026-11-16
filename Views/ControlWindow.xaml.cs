@@ -50,6 +50,7 @@ public partial class ControlWindow : Window
         Preview.GetScreenColors = () => _overlay?.ScreenColors;
         InitializeCustomizationControls();
         InitializeMotionControls();
+        InitializeSampleControls();
         RestoreControls();
         RefreshDescriptions();
         ApplySettings();
@@ -99,6 +100,7 @@ public partial class ControlWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         _exiting = true;
+        _samplePreviewTimer?.Stop();
         if (_saveTimer.IsEnabled)
             SaveSettings();
         SystemEvents.DisplaySettingsChanged -= OnDisplaysChanged;
@@ -188,6 +190,7 @@ public partial class ControlWindow : Window
             _trayToggle.Text = "Stop party";
             _tray.Text = "PartyTime · On";
             _audio.Start();
+            UpdateSampleCaptureExclusion();
             RefreshColorSource();
         }
         catch (Exception ex)
@@ -201,6 +204,7 @@ public partial class ControlWindow : Window
     {
         _overlay?.Dispose();
         _overlay = null;
+        UpdateSampleCaptureExclusion();
         _audio.Dispose();
         StatusTitle.Text = "Party is off";
         StatusDetail.Text = detail;
@@ -242,6 +246,7 @@ public partial class ControlWindow : Window
         BorderReaction.SelectedIndex = (int)_settings.BorderReaction;
         EffectsReaction.SelectedIndex = (int)_settings.EffectsReaction;
         RestoreMotionControls();
+        RestoreSampleControls();
         RefreshImageList();
     }
 
@@ -288,6 +293,13 @@ public partial class ControlWindow : Window
             CursorTrailLength = (int)CursorLengthSlider.Value,
             CursorTrailSize = (int)CursorSizeSlider.Value,
             CursorReaction = (AudioReaction)CursorReaction.SelectedIndex,
+            ScreenSamplesEnabled = ScreenSamplesToggle.IsChecked == true,
+            SampleBlend = (ScreenSampleBlend)SampleBlendPicker.SelectedIndex,
+            SampleReaction = (AudioReaction)SampleReactionPicker.SelectedIndex,
+            SampleBeats = (int)SampleBeatsSlider.Value,
+            SampleOpacity = (int)SampleOpacitySlider.Value,
+            SampleZoom = (int)SampleZoomSlider.Value,
+            SampleFade = (int)SampleFadeSlider.Value,
             FrameRate = ReadChoice<OverlayFrameRate>(FrameRateChoices),
             Intensity = (int)IntensitySlider.Value,
             Size = (int)SizeSlider.Value,
@@ -315,6 +327,7 @@ public partial class ControlWindow : Window
     private void RefreshDescriptions()
     {
         RefreshMotionDescriptions();
+        RefreshSampleDescriptions();
         IntensityValue.Text = $"{_settings.Intensity}%";
         SizeValue.Text = $"{_settings.Size}%";
         ResponseValue.Text = $"{_settings.Response}%";
@@ -345,6 +358,7 @@ public partial class ControlWindow : Window
     {
         _audio.Focus = _settings.GetRange();
         _overlay?.ApplySettings(_settings);
+        UpdateSampleCaptureExclusion();
         Preview.ApplySettings(_settings);
         RefreshColorSource();
     }

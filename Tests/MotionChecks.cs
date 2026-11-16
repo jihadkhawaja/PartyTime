@@ -199,8 +199,8 @@ internal static partial class Program
         surface.Measure(new Size(800, 600));
         surface.Arrange(new Rect(0, 0, 800, 600));
         surface.ShowScene(scene, true, true);
-        var music = (DrawingVisual)VisualTreeHelper.GetChild(surface, 0);
-        var cursor = (DrawingVisual)VisualTreeHelper.GetChild(surface, 1);
+        var music = (DrawingVisual)VisualTreeHelper.GetChild(surface, 1);
+        var cursor = (DrawingVisual)VisualTreeHelper.GetChild(surface, 2);
         Rect previousMusic = music.ContentBounds, previousCursor = cursor.ContentBounds;
         scene.ApplySettings(Quiet with { CursorTrailEnabled = true });
         scene.UpdatePointer(new Point(400, 100), now + Stopwatch.Frequency / 100);

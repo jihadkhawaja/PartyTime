@@ -2,6 +2,7 @@ using System;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using PartyTime.Interop;
 using Rectangle = System.Drawing.Rectangle;
 
@@ -45,6 +46,9 @@ internal sealed class OverlaySurface : FrameworkElement
 {
     private readonly DrawingVisual _baseDrawing = new();
     private readonly DrawingVisual _cursorDrawing = new();
+    private readonly DrawingVisual _sampleDrawing = new();
+    private BitmapSource? _sample;
+    private double _sampleOpacity;
     private Scene? _scene;
     private bool _baseVisible;
     private bool _cursorVisible;
@@ -53,19 +57,22 @@ internal sealed class OverlaySurface : FrameworkElement
     public OverlaySurface()
     {
         ClipToBounds = true;
+        AddVisualChild(_sampleDrawing);
         AddVisualChild(_baseDrawing);
         AddVisualChild(_cursorDrawing);
     }
 
-    protected override int VisualChildrenCount => 2;
+    protected override int VisualChildrenCount => 3;
     protected override Visual GetVisualChild(int index) => index switch
     {
-        0 => _baseDrawing, 1 => _cursorDrawing, _ => throw new ArgumentOutOfRangeException(nameof(index))
+        0 => _sampleDrawing, 1 => _baseDrawing, 2 => _cursorDrawing, _ => throw new ArgumentOutOfRangeException(nameof(index))
     };
 
-    public void ShowScene(Scene? scene, bool redrawBase = true, bool drawCursor = true)
+    public void ShowScene(Scene? scene, bool redrawBase = true, bool drawCursor = true, BitmapSource? sample = null, double sampleOpacity = 0)
     {
         _scene = scene;
+        _sample = sample;
+        _sampleOpacity = sampleOpacity;
         Draw(redrawBase, drawCursor);
     }
 
@@ -79,6 +86,16 @@ internal sealed class OverlaySurface : FrameworkElement
     {
         if (ActualWidth <= 0 || ActualHeight <= 0)
             return;
+        if (redrawBase)
+        {
+            using var drawing = _sampleDrawing.RenderOpen();
+            if (_sample != null && _sampleOpacity > 0)
+            {
+                drawing.PushOpacity(_sampleOpacity);
+                drawing.DrawImage(_sample, new Rect(0, 0, ActualWidth, ActualHeight));
+                drawing.Pop();
+            }
+        }
         if (redrawBase && (_baseVisible || _scene?.BaseVisible == true))
         {
             using var drawing = _baseDrawing.RenderOpen();

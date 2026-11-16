@@ -21,10 +21,14 @@ internal sealed class GpuScreenCapture : IDisposable
     private readonly ID2D1Bitmap1 _sourceBitmap = null!;
     private readonly ID2D1Bitmap1 _target = null!;
     private readonly ID2D1Bitmap1 _readback = null!;
+    private readonly int _width, _height;
     private bool _ownsFrame;
+    public bool HasFrame { get; private set; }
 
-    private GpuScreenCapture(IDXGIAdapter adapter, IDXGIOutput1 output, Rectangle bounds)
+    private GpuScreenCapture(IDXGIAdapter adapter, IDXGIOutput1 output, Rectangle bounds, int width, int height)
     {
+        _width = width;
+        _height = height;
         try
         {
             D3D11CreateDevice(adapter, DriverType.Unknown, DeviceCreationFlags.BgraSupport, null!,
@@ -44,7 +48,7 @@ internal sealed class GpuScreenCapture : IDisposable
             using var sourceSurface = _source.QueryInterface<IDXGISurface>();
             _sourceBitmap = _context.CreateBitmapFromDxgiSurface(sourceSurface, new BitmapProperties1(format, 96, 96));
 
-            var size = new Vortice.Mathematics.SizeI(ScreenColorSampler.SampleWidth, ScreenColorSampler.SampleHeight);
+            var size = new Vortice.Mathematics.SizeI(width, height);
             _target = _context.CreateBitmap(size, new BitmapProperties1(format, 96, 96, BitmapOptions.Target));
             _readback = _context.CreateBitmap(size, new BitmapProperties1(format, 96, 96, BitmapOptions.CpuRead | BitmapOptions.CannotDraw));
             _context.Target = _target;
@@ -57,7 +61,7 @@ internal sealed class GpuScreenCapture : IDisposable
         }
     }
 
-    public static GpuScreenCapture? Open(Rectangle bounds)
+    public static GpuScreenCapture? Open(Rectangle bounds, int width = ScreenColorSampler.SampleWidth, int height = ScreenColorSampler.SampleHeight)
     {
         using var factory = DXGI.CreateDXGIFactory1<IDXGIFactory1>();
         for (uint i = 0; factory.EnumAdapters1(i, out var adapter).Success; i++)
@@ -81,7 +85,7 @@ internal sealed class GpuScreenCapture : IDisposable
                         if (description.Rotation != ModeRotation.Identity)
                             return null;
                         using var output1 = output.QueryInterface<IDXGIOutput1>();
-                        return new GpuScreenCapture(adapter, output1, bounds);
+                        return new GpuScreenCapture(adapter, output1, bounds, width, height);
                     }
                 }
             }
@@ -92,6 +96,34 @@ internal sealed class GpuScreenCapture : IDisposable
     public unsafe bool TryReadPalette(out Color[]? palette)
     {
         palette = null;
+        if (!UpdateFrame()) return false;
+        var mapped = _readback.Map(MapOptions.Read);
+        try
+        {
+            int stride = (int)mapped.Pitch;
+            var pixels = new ReadOnlySpan<byte>((void*)mapped.Bits, stride * _height);
+            palette = ScreenColorSampler.ExtractPalette(pixels, stride);
+        }
+        finally { _readback.Unmap(); }
+        return true;
+    }
+
+    public unsafe bool TryReadPixels(Span<byte> pixels)
+    {
+        if (!UpdateFrame()) return false;
+        var mapped = _readback.Map(MapOptions.Read);
+        try
+        {
+            for (int y = 0; y < _height; y++)
+                new ReadOnlySpan<byte>((byte*)mapped.Bits + y * mapped.Pitch, _width * 4)
+                    .CopyTo(pixels.Slice(y * _width * 4, _width * 4));
+        }
+        finally { _readback.Unmap(); }
+        return true;
+    }
+
+    private bool UpdateFrame()
+    {
         ReleaseFrame();
         var result = _duplication.AcquireNextFrame(0, out var frame, out var resource);
         if (result == Vortice.DXGI.ResultCode.WaitTimeout)
@@ -100,30 +132,21 @@ internal sealed class GpuScreenCapture : IDisposable
         _ownsFrame = true;
         using (resource)
         {
-            if (frame.LastPresentTime == 0)
+            if (frame.LastPresentTime == 0 && HasFrame)
                 return false;
 
             using var texture = resource.QueryInterface<ID3D11Texture2D>();
             _immediate.CopyResource(_source, texture);
             _context.BeginDraw();
             _context.DrawBitmap(_sourceBitmap,
-                new RawRectF(0, 0, ScreenColorSampler.SampleWidth, ScreenColorSampler.SampleHeight),
-                1, Vortice.Direct2D1.InterpolationMode.NearestNeighbor, null, null);
+                new RawRectF(0, 0, _width, _height),
+                1, _width == ScreenColorSampler.SampleWidth ? Vortice.Direct2D1.InterpolationMode.NearestNeighbor
+                    : Vortice.Direct2D1.InterpolationMode.Linear, null, null);
             _context.EndDraw().CheckError();
         }
 
         _readback.CopyFromBitmap(_target);
-        var mapped = _readback.Map(MapOptions.Read);
-        try
-        {
-            int stride = (int)mapped.Pitch;
-            var pixels = new ReadOnlySpan<byte>((void*)mapped.Bits, stride * ScreenColorSampler.SampleHeight);
-            palette = ScreenColorSampler.ExtractPalette(pixels, stride);
-        }
-        finally
-        {
-            _readback.Unmap();
-        }
+        HasFrame = true;
         return true;
     }
 
