@@ -3,7 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
-using System.Windows.Media;
+using Avalonia.Media;
 using PartyTime.Audio;
 
 namespace PartyTime.Settings;

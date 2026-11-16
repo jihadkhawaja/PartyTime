@@ -1,8 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Windows;
-using System.Windows.Media.Imaging;
+using Avalonia;
+using Avalonia.Media.Imaging;
+using BitmapSource = Avalonia.Media.Imaging.Bitmap;
 using PartyTime.Settings;
 
 namespace PartyTime.Visualization;
@@ -129,9 +130,9 @@ internal sealed partial class Scene
 
     private static void DrawImageAt(ISceneDrawing drawing, BitmapSource bitmap, Point center, double size, double opacity)
     {
-        double scale = size / Math.Max(bitmap.PixelWidth, bitmap.PixelHeight);
-        double width = bitmap.PixelWidth * scale;
-        double height = bitmap.PixelHeight * scale;
+        double scale = size / Math.Max(bitmap.PixelSize.Width, bitmap.PixelSize.Height);
+        double width = bitmap.PixelSize.Width * scale;
+        double height = bitmap.PixelSize.Height * scale;
         drawing.DrawImage(bitmap, new Rect(center.X - width / 2, center.Y - height / 2, width, height), opacity);
     }
 }

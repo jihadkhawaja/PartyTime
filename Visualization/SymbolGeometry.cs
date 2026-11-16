@@ -1,7 +1,7 @@
 using System;
 using System.Linq;
-using System.Windows;
-using System.Windows.Media;
+using Avalonia;
+using Avalonia.Media;
 using PartyTime.Settings;
 
 namespace PartyTime.Visualization;
@@ -9,10 +9,10 @@ namespace PartyTime.Visualization;
 internal static class SymbolGeometry
 {
     private static readonly Point[][] Vertices = Enumerable.Range(0, (int)ShapeKind.Mixed).Select(index => Build((ShapeKind)index)).ToArray();
-    private static readonly Geometry[] WpfGeometries = Enumerable.Range(0, (int)ShapeKind.Mixed).Select(index => CreateWpf((ShapeKind)index)).ToArray();
+    private static readonly Geometry[] Geometries = Enumerable.Range(0, (int)ShapeKind.Mixed).Select(index => CreateGeometry((ShapeKind)index)).ToArray();
 
     public static ReadOnlySpan<Point> Points(ShapeKind shape) => Vertices[(int)shape];
-    public static Geometry Wpf(ShapeKind shape) => WpfGeometries[(int)shape];
+    public static Geometry Get(ShapeKind shape) => Geometries[(int)shape];
 
     private static Point[] Build(ShapeKind shape)
     {
@@ -43,23 +43,22 @@ internal static class SymbolGeometry
         return points;
     }
 
-    private static Geometry CreateWpf(ShapeKind shape)
+    private static Geometry CreateGeometry(ShapeKind shape)
     {
         if (shape == ShapeKind.Circle)
         {
-            var circle = new EllipseGeometry(new Point(), 1, 1);
-            circle.Freeze();
+            var circle = new EllipseGeometry(new Rect(-1, -1, 2, 2));
             return circle;
         }
         var geometry = new StreamGeometry();
         using (var path = geometry.Open())
         {
             var points = Points(shape);
-            path.BeginFigure(points[0], true, true);
+            path.BeginFigure(points[0], true);
             for (int i = 1; i < points.Length; i++)
-                path.LineTo(points[i], true, true);
+                path.LineTo(points[i]);
+            path.EndFigure(true);
         }
-        geometry.Freeze();
         return geometry;
     }
 }

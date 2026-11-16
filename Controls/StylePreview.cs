@@ -1,17 +1,18 @@
 using System;
 using System.Diagnostics;
-using System.Windows;
-using System.Windows.Media;
-using System.Windows.Threading;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Media;
+using Avalonia.Threading;
 using PartyTime.Audio;
 using PartyTime.Settings;
 using PartyTime.Visualization;
 
 namespace PartyTime.Controls;
 
-public sealed class StylePreview : FrameworkElement
+public sealed class StylePreview : Control
 {
-    private static readonly Brush ScreenSurface = new LinearGradientBrush(
+    private static readonly Brush ScreenSurface = SceneBrush.Linear(
         Color.FromRgb(20, 17, 36), Color.FromRgb(25, 31, 52), new Point(0, 1), new Point(1, 0));
     private static readonly Brush MockWindow = new SolidColorBrush(Color.FromRgb(39, 37, 63));
     private static readonly Brush MockContent = new SolidColorBrush(Color.FromRgb(58, 54, 82));
@@ -25,22 +26,25 @@ public sealed class StylePreview : FrameworkElement
     public StylePreview()
     {
         ClipToBounds = true;
-        _timer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
+        _timer = new DispatcherTimer(DispatcherPriority.Background)
         {
             Interval = TimeSpan.FromMilliseconds(40)
         };
         _timer.Tick += (_, _) =>
         {
-            if (Window.GetWindow(this)?.WindowState != WindowState.Minimized)
+            if ((TopLevel.GetTopLevel(this) as Window)?.WindowState != WindowState.Minimized)
                 UpdatePreview();
         };
-        IsVisibleChanged += (_, _) =>
+        PropertyChanged += (_, e) =>
         {
+            if (e.Property != IsVisibleProperty) return;
             if (IsVisible)
                 _timer.Start();
             else
                 _timer.Stop();
         };
+        AttachedToVisualTree += (_, _) => _timer.Start();
+        DetachedFromVisualTree += (_, _) => _timer.Stop();
     }
 
     internal Func<Color[]?>? GetScreenColors { get; set; }
@@ -73,27 +77,27 @@ public sealed class StylePreview : FrameworkElement
         }
         var frame = new AudioFrame(now, Sample(_range), Sample(FrequencyRange.Full),
             Sample(FrequencyRange.Bass), Sample(FrequencyRange.Mids), Sample(FrequencyRange.Treble));
-        _scene.UpdatePointer(ActualWidth > 0 && ActualHeight > 0
-            ? new Point(ActualWidth * (0.5 + Math.Sin(seconds * 1.7) * 0.32), ActualHeight * (0.5 + Math.Cos(seconds * 2.3) * 0.28))
+        _scene.UpdatePointer(Bounds.Width > 0 && Bounds.Height > 0
+            ? new Point(Bounds.Width * (0.5 + Math.Sin(seconds * 1.7) * 0.32), Bounds.Height * (0.5 + Math.Cos(seconds * 2.3) * 0.28))
             : null, now);
         _showScene = _scene.Update(frame, now, _timer.Interval.TotalSeconds, GetScreenColors?.Invoke());
         InvalidateVisual();
     }
 
-    protected override void OnRender(DrawingContext drawing)
+    public override void Render(DrawingContext drawing)
     {
-        double width = ActualWidth;
-        double height = ActualHeight;
+        double width = Bounds.Width;
+        double height = Bounds.Height;
         if (width <= 0 || height <= 0)
             return;
 
-        drawing.DrawRoundedRectangle(ScreenSurface, null, new Rect(0, 0, width, height), 7, 7);
+        drawing.DrawRectangle(ScreenSurface, null, new Rect(0, 0, width, height), 7, 7);
         double mockWidth = width * 0.4;
         double x = (width - mockWidth) / 2;
         double y = height * 0.19;
-        drawing.DrawRoundedRectangle(MockWindow, null, new Rect(x, y, mockWidth, height * 0.62), 6, 6);
-        drawing.DrawRoundedRectangle(MockContent, null, new Rect(x + 10, y + 9, 20, 2), 1, 1);
-        drawing.DrawRoundedRectangle(MockContent, null, new Rect(x + 10, y + 17, Math.Max(1, mockWidth - 20), height * 0.30), 4, 4);
+        drawing.DrawRectangle(MockWindow, null, new Rect(x, y, mockWidth, height * 0.62), 6, 6);
+        drawing.DrawRectangle(MockContent, null, new Rect(x + 10, y + 9, 20, 2), 1, 1);
+        drawing.DrawRectangle(MockContent, null, new Rect(x + 10, y + 17, Math.Max(1, mockWidth - 20), height * 0.30), 4, 4);
         if (_showScene)
             _scene.Draw(drawing, width, height);
     }

@@ -1,7 +1,9 @@
 using System;
-using System.Windows;
-using System.Windows.Threading;
+using Avalonia;
+using Avalonia.Interactivity;
+using Avalonia.Threading;
 using PartyTime.Settings;
+using PartyTime.Visualization;
 
 namespace PartyTime.Views;
 
@@ -13,8 +15,8 @@ public partial class ControlWindow
     private void UpdateSampleCaptureExclusion()
     {
         bool exclude = _settings.ScreenSamplesEnabled && _overlay != null;
-        if (_source != null && exclude != _sampleControlsExcluded
-            && Interop.Desktop.SetCaptureExcluded(_source.Handle, exclude))
+        if (exclude != _sampleControlsExcluded
+            && Interop.Desktop.SetCaptureExcluded(this, exclude))
             _sampleControlsExcluded = exclude;
     }
 
@@ -22,13 +24,15 @@ public partial class ControlWindow
     {
         SampleBlendPicker.ItemsSource = new[] { "Normal", "Additive", "Screen", "Multiply", "Difference", "Negative" };
         SampleReactionPicker.ItemsSource = new[] { "Follow focus", "Full mix", "Low · bass", "Mid · instruments", "High · treble" };
-        _samplePreviewTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
+        _samplePreviewTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
             Interval = TimeSpan.FromMilliseconds(200)
         };
+        Opened += (_, _) => _samplePreviewTimer.Start();
         _samplePreviewTimer.Tick += (_, _) => RefreshSamplePreview();
-        SamplePreviewHost.IsVisibleChanged += (_, _) =>
+        SamplePreviewHost.PropertyChanged += (_, e) =>
         {
+            if (e.Property != IsVisibleProperty) return;
             if (SamplePreviewHost.IsVisible)
             {
                 RefreshSamplePreview();
@@ -55,7 +59,7 @@ public partial class ControlWindow
 
     private void RefreshSampleDescriptions()
     {
-        ScreenSamplesPanel.Visibility = _settings.ScreenSamplesEnabled ? Visibility.Visible : Visibility.Collapsed;
+        ScreenSamplesPanel.IsVisible = _settings.ScreenSamplesEnabled ? true : false;
         SampleBeatsLabel.Text = _settings.SampleBeats == 1 ? "New screenshot · every beat" : $"New screenshot · every {_settings.SampleBeats} beats";
         SampleOpacityLabel.Text = $"Overlay opacity · {_settings.SampleOpacity}%";
         SampleZoomLabel.Text = $"Beat zoom · {_settings.SampleZoom}%";
@@ -75,7 +79,8 @@ public partial class ControlWindow
     private void RefreshSamplePreview()
     {
         SamplePreview.Source = _settings.ScreenSamplesEnabled ? _overlay?.ScreenSamplePreview : null;
-        SampleStatus.Text = !_settings.ScreenSamplesEnabled ? "Enable screen samples to add a beat-synced screenshot layer."
+        SampleStatus.Text = !DesktopCapture.IsSupported ? DesktopCapture.UnavailableReason
+            : !_settings.ScreenSamplesEnabled ? "Enable screen samples to add a beat-synced screenshot layer."
             : _overlay == null ? "Start the party and play audio to capture samples. The preview shows your primary display."
             : _settings.SampleOpacity == 0 ? "Overlay opacity is 0%. Raise it to capture and show samples."
             : _overlay.ScreenSampleStatus;

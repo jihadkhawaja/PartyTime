@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Windows;
-using System.Windows.Media;
+using Avalonia;
+using Avalonia.Media;
 using PartyTime.Settings;
 
 namespace PartyTime.Visualization;
@@ -19,10 +19,11 @@ internal sealed partial class Scene
     {
         if (!HasCursorTrail)
             return false;
-        var trailBounds = Rect.Empty;
-        foreach (var sample in _cursorPoints) trailBounds.Union(sample.Position);
-        trailBounds.Inflate(_settings.CursorTrailSize * 4 * dpiScale, _settings.CursorTrailSize * 4 * dpiScale);
-        return desktopBounds.IntersectsWith(trailBounds);
+        var trailBounds = new Rect(_cursorPoints[0].Position, new Size(0.01, 0.01));
+        foreach (var sample in _cursorPoints)
+            trailBounds = trailBounds.Union(new Rect(sample.Position, new Size(0.01, 0.01)));
+        trailBounds = trailBounds.Inflate(_settings.CursorTrailSize * 4 * dpiScale);
+        return desktopBounds.Intersects(trailBounds);
     }
 
     public void ClearCursorTrail()
@@ -47,7 +48,7 @@ internal sealed partial class Scene
             _cursorPoints.RemoveRange(0, expired);
         if (position is not { } current || !double.IsFinite(current.X) || !double.IsFinite(current.Y))
             return;
-        if (_lastPointerPosition is { } last && (current - last).Length < 2)
+        if (_lastPointerPosition is { } last && ((Vector)(current - last)).Length < 2)
             return;
         _lastPointerPosition = current;
         if (_cursorPoints.Count == 0)
@@ -94,7 +95,7 @@ internal sealed partial class Scene
                 if (i > 0)
                 {
                     var start = Local(_cursorPoints[i - 1].Position);
-                    if (viewport.IntersectsWith(new Rect(start, point)))
+                    if (viewport.Intersects(new Rect(start, point)))
                         drawing.DrawColoredLine(start, point, color, opacity, Math.Max(0.7, radius));
                 }
                 else if (viewport.Contains(point))

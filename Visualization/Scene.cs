@@ -2,8 +2,8 @@ using System;
 using System.Diagnostics;
 using System.Linq;
 using Vector3 = System.Numerics.Vector3;
-using System.Windows;
-using System.Windows.Media;
+using Avalonia;
+using Avalonia.Media;
 using PartyTime.Audio;
 using PartyTime.Settings;
 
@@ -118,7 +118,7 @@ internal sealed partial class Scene
     }
 
     public void Draw(DrawingContext drawing, double width, double height, Point desktopOrigin = default, double dpiX = 1, double dpiY = 1)
-        => Draw(new WpfSceneDrawing(drawing), width, height, desktopOrigin, dpiX, dpiY);
+        => Draw(new AvaloniaSceneDrawing(drawing), width, height, desktopOrigin, dpiX, dpiY);
 
     public void Draw(ISceneDrawing drawing, double width, double height, Point desktopOrigin = default, double dpiX = 1, double dpiY = 1)
     {
@@ -249,7 +249,7 @@ internal sealed partial class Scene
             _ => (new Rect(0, 0, depth, height), new Point(0, 0), new Point(1, 0), new Point(0, 1), new Point(0, 0))
         };
 
-        var vignette = new LinearGradientBrush { StartPoint = outer, EndPoint = inner };
+        var vignette = new LinearGradientBrush { StartPoint = new RelativePoint(outer, RelativeUnit.Relative), EndPoint = new RelativePoint(inner, RelativeUnit.Relative) };
         vignette.GradientStops.Add(new GradientStop(Alpha(glow, strength), 0));
         vignette.GradientStops.Add(new GradientStop(Alpha(glow, strength * 0.44), 0.22));
         vignette.GradientStops.Add(new GradientStop(Alpha(glow, strength * 0.12), 0.58));
@@ -264,7 +264,7 @@ internal sealed partial class Scene
             _ => new Rect(0, 0, rail, height)
         };
         double railAlpha = Math.Min(0.95, strength * 1.55);
-        var highlight = new LinearGradientBrush { StartPoint = alongStart, EndPoint = alongEnd };
+        var highlight = new LinearGradientBrush { StartPoint = new RelativePoint(alongStart, RelativeUnit.Relative), EndPoint = new RelativePoint(alongEnd, RelativeUnit.Relative) };
         highlight.GradientStops.Add(new GradientStop(Alpha(start, railAlpha), 0));
         highlight.GradientStops.Add(new GradientStop(Alpha(Mix(glow, Colors.White, 0.33), railAlpha * 0.9), 0.53));
         highlight.GradientStops.Add(new GradientStop(Alpha(end, railAlpha), 1));
@@ -278,7 +278,7 @@ internal sealed partial class Scene
         double barWidth = Math.Max(1, Math.Min(14, step * 0.42));
         double start = (width - span) / 2;
         double opacity = Intensity * (0.38 + _pulse * 0.40);
-        var brush = new LinearGradientBrush(Alpha(color, opacity), Alpha(color, 0.10 * opacity),
+        var brush = SceneBrush.Linear(Alpha(color, opacity), Alpha(color, 0.10 * opacity),
             new Point(0, top ? 0 : 1), new Point(0, top ? 1 : 0));
 
         for (int i = 0; i < _bands.Length; i++)
@@ -309,7 +309,7 @@ internal sealed partial class Scene
         for (int i = 0; i < 4; i++)
         {
             var pen = new Pen(new SolidColorBrush(Alpha(_colors[i], opacity * 0.94)),
-                Math.Clamp(unit * 0.0035, 1, 6)) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
+                Math.Clamp(unit * 0.0035, 1, 6)) { LineCap = PenLineCap.Round };
             int first = i * _bands.Length / 4;
             int end = (i + 1) * _bands.Length / 4;
             for (int band = first; band < end; band++)
@@ -329,7 +329,7 @@ internal sealed partial class Scene
         double span = width * 0.53 * Size;
         double step = span / _bands.Length;
         double barWidth = Math.Max(1, step * 0.53);
-        var brush = new LinearGradientBrush(Alpha(_colors[0], Intensity * 0.85), Alpha(_colors[2], Intensity * 0.73),
+        var brush = SceneBrush.Linear(Alpha(_colors[0], Intensity * 0.85), Alpha(_colors[2], Intensity * 0.73),
             new Point(0, 0), new Point(0, 1));
         for (int i = 0; i < _bands.Length; i++)
         {
@@ -364,7 +364,7 @@ internal sealed partial class Scene
     }
 
     private LinearGradientBrush SpectrumBrush(double opacity)
-        => new(Alpha(_colors[0], opacity), Alpha(_colors[2], opacity), new Point(0, 0), new Point(1, 1));
+        => SceneBrush.Linear(Alpha(_colors[0], opacity), Alpha(_colors[2], opacity), new Point(0, 0), new Point(1, 1));
 
     private static double Follow(double current, double target, double elapsed, double attack, double release)
         => current + (target - current) * (1 - Math.Exp(-elapsed / (target > current ? attack : release)));

@@ -8,23 +8,8 @@
       "args": [
         "build",
         "PartyTime.csproj",
-        "-c", "Debug"
-      ],
-      "options": {
-        "cwd": "${workspaceFolder}"
-      },
-      "group": "build",
-      "problemMatcher": "$msCompile"
-    },
-    {
-      "label": "Publish PartyTime (Windows x64)",
-      "type": "process",
-      "command": "powershell.exe",
-      "args": [
-        "-NoProfile",
-        "-ExecutionPolicy", "Bypass",
-        "-File", "${workspaceFolder}/scripts/Publish-Windows.ps1",
-        "-Architecture", "x64"
+        "-c",
+        "Debug"
       ],
       "options": {
         "cwd": "${workspaceFolder}"
@@ -36,14 +21,92 @@
       "problemMatcher": "$msCompile"
     },
     {
+      "label": "Publish PartyTime (Windows x64)",
+      "type": "process",
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/scripts/Publish-Windows.ps1",
+        "-Architecture",
+        "x64"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "build",
+      "problemMatcher": "$msCompile"
+    },
+    {
       "label": "Publish PartyTime (Windows ARM64)",
       "type": "process",
       "command": "powershell.exe",
       "args": [
         "-NoProfile",
-        "-ExecutionPolicy", "Bypass",
-        "-File", "${workspaceFolder}/scripts/Publish-Windows.ps1",
-        "-Architecture", "arm64"
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/scripts/Publish-Windows.ps1",
+        "-Architecture",
+        "arm64"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "build",
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "Publish PartyTime (Linux x64)",
+      "type": "process",
+      "command": "bash",
+      "args": [
+        "scripts/publish.sh",
+        "linux-x64"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "build",
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "Publish PartyTime (Linux ARM64)",
+      "type": "process",
+      "command": "bash",
+      "args": [
+        "scripts/publish.sh",
+        "linux-arm64"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "build",
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "Publish PartyTime (macOS Intel)",
+      "type": "process",
+      "command": "bash",
+      "args": [
+        "scripts/publish.sh",
+        "osx-x64"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "build",
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "Publish PartyTime (macOS Apple Silicon)",
+      "type": "process",
+      "command": "bash",
+      "args": [
+        "scripts/publish.sh",
+        "osx-arm64"
       ],
       "options": {
         "cwd": "${workspaceFolder}"

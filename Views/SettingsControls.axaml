@@ -1,0 +1,140 @@
+<Styles xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Styles.Resources>
+    <SolidColorBrush x:Key="Muted" Color="#B9B0CB"/>
+    <SolidColorBrush x:Key="Accent" Color="#D4BDFF"/>
+    <SolidColorBrush x:Key="Panel" Color="#1A1525"/>
+    <SolidColorBrush x:Key="PanelBorder" Color="#362A49"/>
+    <ControlTheme x:Key="ChoiceRadioTheme" TargetType="RadioButton">
+      <Setter Property="Foreground" Value="#D6CDE2"/>
+      <Setter Property="Background" Value="#241D30"/>
+      <Setter Property="BorderBrush" Value="#493A5C"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="8"/>
+      <Setter Property="Padding" Value="8,10"/>
+      <Setter Property="MinHeight" Value="44"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="ContentTemplate">
+        <DataTemplate>
+          <TextBlock Text="{Binding}" TextWrapping="Wrap" TextAlignment="Center"/>
+        </DataTemplate>
+      </Setter>
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border x:Name="RadioCard" Background="{TemplateBinding Background}"
+                  BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                  CornerRadius="{TemplateBinding CornerRadius}" Padding="{TemplateBinding Padding}">
+            <Grid>
+            <ContentPresenter x:Name="PART_ContentPresenter" Content="{TemplateBinding Content}"
+                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                              HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                              VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"/>
+            <Path x:Name="SelectionMark" Data="M 0,3 L 3,6 L 8,0" Width="8" Height="6" Stretch="Fill"
+                  Stroke="#E5D2FF" StrokeThickness="1.8" HorizontalAlignment="Right" VerticalAlignment="Top"
+                  Margin="0,-5,-3,0" IsVisible="False" IsHitTestVisible="False"/>
+            </Grid>
+          </Border>
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:pointerover">
+        <Setter Property="Background" Value="#32263F"/>
+        <Setter Property="BorderBrush" Value="#8A71AD"/>
+        <Setter Property="Foreground" Value="#F4EFFF"/>
+      </Style>
+      <Style Selector="^:checked">
+        <Setter Property="Background" Value="#48305F"/>
+        <Setter Property="BorderBrush" Value="#C6A8FF"/>
+        <Setter Property="Foreground" Value="#F7F0FF"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+      </Style>
+      <Style Selector="^:checked:pointerover">
+        <Setter Property="Background" Value="#563A70"/>
+      </Style>
+      <Style Selector="^:checked /template/ Path#SelectionMark">
+        <Setter Property="IsVisible" Value="True"/>
+      </Style>
+      <Style Selector="^:pressed">
+        <Setter Property="Background" Value="#38244E"/>
+      </Style>
+      <Style Selector="^:focus-visible /template/ Border#RadioCard">
+        <Setter Property="BoxShadow" Value="0 0 0 2 #100E19, 0 0 0 4 #E5D2FF"/>
+      </Style>
+      <Style Selector="^:disabled">
+        <Setter Property="Opacity" Value="0.45"/>
+      </Style>
+    </ControlTheme>
+  </Styles.Resources>
+  <Style Selector="TextBlock.Eyebrow">
+    <Setter Property="FontSize" Value="11"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="Foreground" Value="{StaticResource Accent}"/>
+  </Style>
+  <Style Selector="TextBlock.HelpText">
+    <Setter Property="FontSize" Value="12"/>
+    <Setter Property="TextWrapping" Value="Wrap"/>
+    <Setter Property="Foreground" Value="{StaticResource Muted}"/>
+  </Style>
+  <Style Selector="Button">
+    <Setter Property="MinHeight" Value="40"/>
+    <Setter Property="Padding" Value="16,10"/>
+    <Setter Property="FontSize" Value="13"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+    <Setter Property="CornerRadius" Value="8"/>
+  </Style>
+  <Style Selector="Button.Primary">
+    <Setter Property="Background" Value="#C6A8FF"/>
+    <Setter Property="Foreground" Value="#211132"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+  </Style>
+  <Style Selector="Button.Primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="#D9C3FF"/>
+    <Setter Property="Foreground" Value="#211132"/>
+    <Setter Property="BorderBrush" Value="#E5D2FF"/>
+  </Style>
+  <Style Selector="Button.Primary:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="#AF8BE5"/>
+    <Setter Property="Foreground" Value="#211132"/>
+  </Style>
+  <Style Selector="Button.Secondary, Button.Danger">
+    <Setter Property="Background" Value="#292033"/>
+    <Setter Property="Foreground" Value="#E5D9F5"/>
+    <Setter Property="BorderBrush" Value="#5B466E"/>
+    <Setter Property="BorderThickness" Value="1"/>
+  </Style>
+  <Style Selector="Button.Secondary:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.Danger:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="#3A2B4C"/>
+    <Setter Property="BorderBrush" Value="#A98CC9"/>
+    <Setter Property="Foreground" Value="#F7F0FF"/>
+  </Style>
+  <Style Selector="Button.Danger">
+    <Setter Property="Foreground" Value="#FFB8C8"/>
+  </Style>
+  <Style Selector="RadioButton.Choice">
+    <Setter Property="Theme" Value="{StaticResource ChoiceRadioTheme}"/>
+    <Setter Property="Margin" Value="0,0,6,6"/>
+    <Setter Property="FontSize" Value="12"/>
+    <Setter Property="HorizontalAlignment" Value="Stretch"/>
+  </Style>
+  <Style Selector="ComboBox.Selection">
+    <Setter Property="HorizontalAlignment" Value="Stretch"/>
+    <Setter Property="Margin" Value="0,3,0,6"/>
+    <Setter Property="MinHeight" Value="40"/>
+  </Style>
+  <Style Selector="ScrollViewer.SettingsScroll">
+    <Setter Property="VerticalScrollBarVisibility" Value="Auto"/>
+    <Setter Property="HorizontalScrollBarVisibility" Value="Disabled"/>
+    <Setter Property="Padding" Value="6,12,14,14"/>
+  </Style>
+  <Style Selector="Button.Swatch">
+    <Setter Property="Width" Value="40"/>
+    <Setter Property="Height" Value="40"/>
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="CornerRadius" Value="6"/>
+    <Setter Property="Margin" Value="0,0,7,0"/>
+  </Style>
+  <Style Selector="TabItem">
+    <Setter Property="FontSize" Value="12"/>
+    <Setter Property="Padding" Value="9,8"/>
+  </Style>
+</Styles>

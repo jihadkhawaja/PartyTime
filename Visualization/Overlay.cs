@@ -2,14 +2,15 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using System.Windows.Threading;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Media;
+using Avalonia.Media.Imaging;
+using Avalonia.Platform;
+using Avalonia.Threading;
 using PartyTime.Audio;
 using PartyTime.Interop;
 using PartyTime.Settings;
-using SharpGen.Runtime;
-using Screen = System.Windows.Forms.Screen;
 
 namespace PartyTime.Visualization;
 
@@ -17,260 +18,140 @@ internal sealed class Overlay : IDisposable
 {
     private static readonly long IdleInterval = Stopwatch.Frequency / 20;
     private readonly SystemAudio _audio;
-    private readonly OverlayClock _clock;
+    private readonly Window _owner;
+    private readonly DispatcherTimer _clock;
     private Display[] _displays = [];
     private readonly Scene _scene = new();
-    private ScreenColorSampler? _sampler;
-    private GpuOverlayRenderer? _gpu;
-    private OverlayFrameRate _frameRate = OverlayFrameRate.Fps30;
-    private long _lastRender;
-    private bool _useScreenColors;
-    private bool _trackCursor;
-    private bool _useScreenSamples;
-    private bool _captureAvailable;
     private readonly ScreenSamplePlayback _samplePlayback = new();
+    private VisualizerSettings _settings = new();
+    private long _lastRender;
+    private bool _captureAvailable;
+    public Color[]? ScreenColors => _displays.FirstOrDefault(d => d.Screen.IsPrimary)?.Colors?.Latest ?? _displays.FirstOrDefault()?.Colors?.Latest;
+    public bool CanSampleScreen => _captureAvailable;
+    public Bitmap? ScreenSamplePreview => (_displays.FirstOrDefault(d => d.Screen.IsPrimary) ?? _displays.FirstOrDefault())?.Samples?.Latest;
+    public string ScreenSampleStatus => !_captureAvailable ? DesktopCapture.UnavailableReason
+        : _displays.Select(d => d.Samples?.Error).FirstOrDefault(error => error != null)
+            ?? (ScreenSamplePreview == null ? "Waiting for a beat… Play audio in the selected range." : "Live sample · screenshots stay in memory.");
 
-    public Overlay(SystemAudio audio)
+    public Overlay(SystemAudio audio, Window owner)
     {
         _audio = audio;
-        _clock = new OverlayClock(Render);
-        try
-        {
-            RebuildScreens();
-        }
-        catch
-        {
-            Dispose();
-            throw;
-        }
+        _owner = owner;
+        _clock = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(1000.0 / 120) };
+        _clock.Tick += (_, _) => Render();
+        try { RebuildScreens(); _clock.Start(); }
+        catch { Dispose(); throw; }
     }
-
-    public Color[]? ScreenColors => _sampler?.Latest;
-    public bool CanSampleScreen => _sampler != null;
-    public BitmapSource? ScreenSamplePreview => (_displays.FirstOrDefault(display => display.Screen.Primary)
-        ?? _displays.FirstOrDefault())?.Samples?.Latest;
-    public string ScreenSampleStatus => !_captureAvailable
-        ? "Screen capture is unavailable. This feature needs Windows 10 version 2004 or later and capture exclusion."
-        : _displays.Select(display => display.Samples?.Error).FirstOrDefault(error => error != null)
-            ?? (ScreenSamplePreview == null ? "Waiting for a beat… Play audio in the selected frequency range."
-                : "Live sample · captures stay in memory and clear when the party stops.");
 
     public void ApplySettings(VisualizerSettings settings)
     {
+        bool recapture = settings.ColorSource != _settings.ColorSource || settings.ScreenBlend != _settings.ScreenBlend
+            || settings.ScreenSamplesEnabled != _settings.ScreenSamplesEnabled;
+        _settings = settings;
         _scene.ApplySettings(settings);
         _samplePlayback.ApplySettings(settings);
-        bool cursorChanged = _trackCursor != settings.CursorTrailEnabled;
-        _trackCursor = settings.CursorTrailEnabled;
-        _clock.Priority = _trackCursor ? DispatcherPriority.Input : DispatcherPriority.Background;
-        if (settings.FrameRate != _frameRate || cursorChanged)
-        {
-            _frameRate = settings.FrameRate;
-            ConfigureFramePacing();
-        }
-        else
-        {
-            long now = Stopwatch.GetTimestamp();
-            foreach (var display in _displays) display.NextFrame = now;
-            _clock.Schedule(now);
-        }
-        bool useScreenColors = settings.ColorSource == ColorSource.Screen
-            || (settings.ColorSource == ColorSource.Mix && settings.ScreenBlend > 0);
-        if (useScreenColors != _useScreenColors || settings.ScreenSamplesEnabled != _useScreenSamples)
-        {
-            _useScreenColors = useScreenColors;
-            _useScreenSamples = settings.ScreenSamplesEnabled;
-            ConfigureSampler();
-        }
+        ConfigureFramePacing();
+        if (recapture) ConfigureSampler();
     }
 
     private void ConfigureSampler()
     {
-        _sampler?.Dispose();
-        _sampler = null;
-        bool capture = _useScreenColors || _useScreenSamples;
-        bool canSample = capture && OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041);
-        foreach (var display in _displays)
-            canSample &= display.Window.SetCaptureExcluded(capture);
-        _captureAvailable = canSample;
-
-        foreach (var display in _displays)
+        bool colors = _settings.ColorSource == ColorSource.Screen || (_settings.ColorSource == ColorSource.Mix && _settings.ScreenBlend > 0);
+        bool capture = colors || _settings.ScreenSamplesEnabled;
+        _captureAvailable = DesktopCapture.IsSupported;
+        foreach (var d in _displays) _captureAvailable &= d.Window.SetCaptureExcluded(capture);
+        foreach (var d in _displays)
         {
-            if (canSample && _useScreenSamples)
-                display.Samples ??= new BeatScreenSampler(display.Screen.Bounds);
-            else
-            {
-                display.Samples?.Dispose();
-                display.Samples = null;
-            }
-        }
-
-        if (canSample)
-        {
-            if (_useScreenColors && Screen.PrimaryScreen is { } screen)
-                _sampler = new ScreenColorSampler(screen.Bounds);
-        }
-        else if (capture)
-        {
-            foreach (var display in _displays)
-                display.Window.SetCaptureExcluded(false);
+            d.Window.Surface.ShowScene(null);
+            d.Colors?.Dispose(); d.Colors = null;
+            d.Samples?.Dispose(); d.Samples = null;
+            if (!_captureAvailable || !capture) continue;
+            if (colors && (d.Screen.IsPrimary || _displays.Length == 1)) d.Colors = new ScreenColorSampler(d.Screen);
+            if (_settings.ScreenSamplesEnabled) d.Samples = new BeatScreenSampler(d.Screen);
         }
     }
 
     public void RebuildScreens()
     {
         _scene.ClearCursorTrail();
-        _gpu?.Dispose();
-        _gpu = null;
-        foreach (var display in _displays)
-        {
-            display.Samples?.Dispose();
-            display.Window.Close();
-        }
-
-        var screens = Screen.AllScreens;
-        var displays = new List<Display>(screens.Length);
+        CloseDisplays();
+        var displays = new List<Display>();
         try
         {
-            foreach (var screen in screens)
+            foreach (var screen in _owner.Screens.All)
             {
                 var window = new OverlayWindow();
                 displays.Add(new Display(window, screen));
-                window.Open(screen.Bounds);
+                window.Open(screen);
             }
             _displays = displays.ToArray();
-            try
-            {
-                _gpu = new GpuOverlayRenderer(_displays.Select(display => display.Window).ToArray(),
-                    screens.Select(screen => screen.Bounds).ToArray());
-            }
-            catch (SharpGenException ex)
-            {
-                Debug.WriteLine(ex);
-            }
-            if (_useScreenColors || _useScreenSamples)
-                ConfigureSampler();
+            ConfigureSampler();
             ConfigureFramePacing();
         }
         catch
         {
-            _gpu?.Dispose();
-            _gpu = null;
-            foreach (var display in displays)
-            {
-                display.Samples?.Dispose();
-                display.Window.Close();
-            }
-            _displays = [];
+            foreach (var d in displays) d.Window.Close();
             throw;
         }
     }
 
-    public void Dispose()
-    {
-        _clock.Dispose();
-        _gpu?.Dispose();
-        _gpu = null;
-        _sampler?.Dispose();
-        foreach (var display in _displays)
-        {
-            display.Samples?.Dispose();
-            display.Window.Close();
-        }
-        _displays = [];
-    }
-
     private void ConfigureFramePacing()
     {
-        var refreshRates = _frameRate == OverlayFrameRate.MatchDisplay || _trackCursor ? DisplayRefreshRates.Read() : null;
+        var rates = OperatingSystem.IsWindows() ? DisplayRefreshRates.Read() : null;
         long now = Stopwatch.GetTimestamp();
-        foreach (var display in _displays)
+        foreach (var d in _displays)
         {
-            double rate = _frameRate == OverlayFrameRate.MatchDisplay
-                ? refreshRates!.GetValueOrDefault(display.Screen.DeviceName, (int)OverlayFrameRate.Fps30)
-                : (int)_frameRate;
-            display.FramePeriod = FramePacing.Period(rate);
-            display.CursorPeriod = FramePacing.Period(FramePacing.CursorRate(refreshRates?.GetValueOrDefault(display.Screen.DeviceName, 60)));
-            display.NextFrame = now;
-            display.NextCursorFrame = now;
+            double refresh = ScreenRefreshRate.Read(d.Screen, rates);
+            d.FramePeriod = FramePacing.Period(_settings.FrameRate == OverlayFrameRate.MatchDisplay ? refresh : (int)_settings.FrameRate);
+            d.CursorPeriod = FramePacing.Period(FramePacing.CursorRate(refresh));
+            d.NextFrame = d.NextCursorFrame = now;
         }
-        _clock.Schedule(now);
+        _clock.Interval = TimeSpan.FromMilliseconds(1);
     }
 
     private void Render()
     {
         long now = Stopwatch.GetTimestamp();
-        double elapsed = _lastRender != 0
-            ? Math.Min(Stopwatch.GetElapsedTime(_lastRender, now).TotalSeconds, 0.2)
-            : 1.0 / (int)OverlayFrameRate.Fps30;
+        double elapsed = _lastRender != 0 ? Math.Min(Stopwatch.GetElapsedTime(_lastRender, now).TotalSeconds, 0.2) : 1.0 / 30;
         _lastRender = now;
-
-        _scene.UpdatePointer(_trackCursor && Desktop.GetCursorPos(out var cursor)
-            ? new System.Windows.Point(cursor.X, cursor.Y) : null, now);
+        _scene.UpdatePointer(_settings.CursorTrailEnabled ? Desktop.GetPointer() : null, now);
         bool visible = _scene.Update(_audio.Latest, now, elapsed, ScreenColors);
         _samplePlayback.Update(_audio.Latest, now);
-        foreach (var display in _displays)
-            display.Samples?.Update(_samplePlayback.Request);
-        Scene? scene = visible ? _scene : null;
-        long nextFrame;
-        try
+        foreach (var d in _displays)
         {
-            nextFrame = DrawFrames(scene, now);
-        }
-        catch (SharpGenException ex) when (_gpu != null)
-        {
-            Debug.WriteLine(ex);
-            _gpu.Dispose();
-            _gpu = null;
-            foreach (var display in _displays)
-                display.NextFrame = now;
-            nextFrame = DrawFrames(scene, now);
-        }
-        _clock.Schedule(nextFrame);
-    }
-
-    private long DrawFrames(Scene? scene, long now)
-    {
-        long nextFrame = long.MaxValue;
-        for (int i = 0; i < _displays.Length; i++)
-        {
-            var display = _displays[i];
-            bool baseDue = now >= display.NextFrame;
-            bool cursorDue = _trackCursor && now >= display.NextCursorFrame;
-            var dpi = VisualTreeHelper.GetDpi(display.Window);
-            var bounds = display.Screen.Bounds;
-            var sample = display.Samples?.Latest;
-            double sampleOpacity = sample != null ? _samplePlayback.Request.Opacity(now) : 0;
-            if (sampleOpacity < 0.005) sample = null;
-            bool cursorVisible = scene != null && scene.CursorIntersects(
-                new System.Windows.Rect(bounds.X, bounds.Y, bounds.Width, bounds.Height), Math.Max(dpi.DpiScaleX, dpi.DpiScaleY));
-            if (baseDue)
-                display.NextFrame = FramePacing.Advance(display.NextFrame, now, scene?.BaseVisible == true || sample != null ? display.FramePeriod : IdleInterval);
-            if (cursorDue)
-                display.NextCursorFrame = FramePacing.Advance(display.NextCursorFrame, now, display.CursorPeriod);
-            if (baseDue || (cursorDue && (cursorVisible || display.CursorVisible)) || (!_trackCursor && display.CursorVisible))
+            d.Samples?.Update(_samplePlayback.Request);
+            bool due = now >= d.NextFrame;
+            bool cursorDue = _settings.CursorTrailEnabled && now >= d.NextCursorFrame;
+            bool cursor = visible && _scene.CursorIntersects(new Rect(d.Screen.Bounds.X, d.Screen.Bounds.Y, d.Screen.Bounds.Width, d.Screen.Bounds.Height), d.Screen.Scaling);
+            var sample = d.Samples?.Latest;
+            double opacity = sample == null ? 0 : _samplePlayback.Request.Opacity(now);
+            if (due) d.NextFrame = FramePacing.Advance(d.NextFrame, now, _scene.BaseVisible || opacity > 0 ? d.FramePeriod : IdleInterval);
+            if (cursorDue) d.NextCursorFrame = FramePacing.Advance(d.NextCursorFrame, now, d.CursorPeriod);
+            if (due || cursorDue && (cursor || d.CursorVisible) || !_settings.CursorTrailEnabled && d.CursorVisible)
             {
-                if (_gpu != null)
-                    _gpu.Draw(i, scene, baseDue, cursorVisible, cacheBase: _trackCursor && (cursorVisible || display.CursorVisible), sample, sampleOpacity);
-                else
-                    display.Window.Surface.ShowScene(scene, baseDue, cursorVisible, sample, sampleOpacity);
-                display.CursorVisible = cursorVisible;
+                d.Window.Surface.ShowScene(visible ? _scene : null, due, cursor, sample, opacity);
+                d.CursorVisible = cursor;
             }
-            nextFrame = Math.Min(nextFrame, display.NextFrame);
-            if (_trackCursor)
-                nextFrame = Math.Min(nextFrame, display.NextCursorFrame);
         }
-        return _displays.Length == 0 ? now + IdleInterval : nextFrame;
+        long next = _displays.Length == 0 ? now + IdleInterval : _displays.Min(d =>
+            _settings.CursorTrailEnabled ? Math.Min(d.NextFrame, d.NextCursorFrame) : d.NextFrame);
+        _clock.Interval = TimeSpan.FromSeconds(Math.Clamp((next - Stopwatch.GetTimestamp()) / (double)Stopwatch.Frequency, 0.001, 0.05));
+
     }
 
+    public void Dispose() { _clock.Stop(); CloseDisplays(); }
+    private void CloseDisplays()
+    {
+        foreach (var d in _displays) { d.Colors?.Dispose(); d.Samples?.Dispose(); d.Window.Close(); }
+        _displays = [];
+    }
     private sealed class Display(OverlayWindow window, Screen screen)
     {
         public OverlayWindow Window { get; } = window;
         public Screen Screen { get; } = screen;
-        public long FramePeriod { get; set; }
-        public long NextFrame { get; set; }
-        public long CursorPeriod { get; set; }
-        public long NextCursorFrame { get; set; }
-        public bool CursorVisible { get; set; }
-        public BeatScreenSampler? Samples { get; set; }
+        public long FramePeriod, CursorPeriod, NextFrame, NextCursorFrame;
+        public bool CursorVisible;
+        public BeatScreenSampler? Samples;
+        public ScreenColorSampler? Colors;
     }
 }

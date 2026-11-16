@@ -1,24 +1,25 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text.Json;
-using System.Threading;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Headless;
+using Avalonia.Interactivity;
+using Avalonia.Media;
+using Avalonia.Media.Imaging;
+using Avalonia.Platform;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
 using PartyTime.Audio;
 using PartyTime.Settings;
 using PartyTime.Views;
 using PartyTime.Visualization;
-using Vortice.Direct2D1;
-using Vortice.Direct3D;
-using Vortice.Direct3D11;
-using Vortice.DXGI;
-using Vortice.Mathematics;
-using Rect = System.Windows.Rect;
+using BitmapSource = Avalonia.Media.Imaging.Bitmap;
 
 internal static partial class Program
 {
@@ -94,141 +95,5 @@ internal static partial class Program
         BeatScreenSampler.BlendPixels(new byte[zoomSample.Length], zoomSample, zoomOutput, 5, 1, ScreenSampleBlend.Normal, 2);
         Check(Enumerable.Range(0, 5).Select(index => zoomOutput[index * 4]).SequenceEqual(new byte[] { 20, 20, 30, 30, 40 }),
             "Beat zoom crops the held screenshot around its center without reading outside the image");
-        var image = BitmapSource.Create(2, 1, 96, 96, PixelFormats.Pbgra32, null, pixels, 8);
-        image.Freeze();
-        var surface = new OverlaySurface();
-        surface.Measure(new System.Windows.Size(200, 100));
-        surface.Arrange(new Rect(0, 0, 200, 100));
-        surface.ShowScene(null, true, false, image, 0.5);
-        var rendered = new RenderTargetBitmap(200, 100, 96, 96, PixelFormats.Pbgra32);
-        rendered.Render(surface);
-        byte[] pixel = new byte[4];
-        rendered.CopyPixels(new Int32Rect(50, 50, 1, 1), pixel, 4, 0);
-        Check(pixel[3] is >= 126 and <= 129 && pixel[0] is >= 28 and <= 30,
-            "The WPF fallback renders samples independently with premultiplied opacity");
-        surface.ShowScene(null, true, false);
-        Check(((DrawingVisual)VisualTreeHelper.GetChild(surface, 0)).ContentBounds.IsEmpty,
-            "The WPF fallback clears the sample layer after fade or disable");
-        CheckSampleGpu(image);
-
-        using var sampler = new BeatScreenSampler(new System.Drawing.Rectangle(0, 0, 64, 48));
-        Check(sampler.Latest == null, "Screen capture waits for a beat instead of capturing when constructed");
-        sampler.Update(new(settings with { SampleFade = 2000 }, Stopwatch.GetTimestamp(), 1));
-        Check(SpinWait.SpinUntil(() => sampler.Latest != null || sampler.Error != null, 2500),
-            "The background capture worker completes without blocking the render thread");
-        if (sampler.Error != null) Console.WriteLine("SKIP Native desktop capture unavailable: " + sampler.Error);
-        else Check(sampler.Latest is { IsFrozen: true, PixelWidth: 64, PixelHeight: 48 },
-            "Native desktop capture publishes a frozen bitmap across threads");
-        var bounds = System.Windows.Forms.Screen.PrimaryScreen!.Bounds;
-        using var fullScreen = new BeatScreenSampler(bounds, automaticCapture: false);
-        var captureRequest = new ScreenSampleRequest(settings with { SampleFade = 2000 }, Stopwatch.GetTimestamp(), 1);
-        fullScreen.Update(captureRequest);
-        Check(fullScreen.CaptureFrame() && fullScreen.Latest is { IsFrozen: true } captured
-            && Math.Max(captured.PixelWidth, captured.PixelHeight) <= 960,
-            "Full-display capture uses the available backend and honors the image size cap");
-        Console.WriteLine("Screen capture backend: " + fullScreen.CaptureBackend);
-        Check(fullScreen.CaptureFrame() && fullScreen.Latest != null,
-            "An unchanged desktop keeps a valid sample without requiring another desktop update");
-        var last = fullScreen.Latest;
-        fullScreen.Update(captureRequest with { BeatTimestamp = Stopwatch.GetTimestamp() - Stopwatch.Frequency * 5 });
-        Check(!fullScreen.CaptureFrame() && ReferenceEquals(fullScreen.Latest, last),
-            "An expired beat skips desktop capture and bitmap publication entirely");
-        fullScreen.Dispose();
-        Check(!fullScreen.CaptureFrame() && fullScreen.Latest == null,
-            "Disposed capture workers release their screenshot and reject subsequent frames");
-    }
-
-    private static unsafe void CheckSampleGpu(BitmapSource image)
-    {
-        D3D11.D3D11CreateDevice(null, DriverType.Warp, DeviceCreationFlags.BgraSupport, null,
-            out ID3D11Device? device, out Vortice.Direct3D.FeatureLevel _).CheckError();
-        using var gpu = device!;
-        using var dxgi = gpu.QueryInterface<IDXGIDevice>();
-        using var factory = D2D1.D2D1CreateFactory<ID2D1Factory1>();
-        using var d2d = factory.CreateDevice(dxgi);
-        using var context = d2d.CreateDeviceContext(DeviceContextOptions.None);
-        var format = new Vortice.DCommon.PixelFormat(Format.B8G8R8A8_UNorm, Vortice.DCommon.AlphaMode.Premultiplied);
-        using var target = context.CreateBitmap(new SizeI(200, 100), IntPtr.Zero, 0,
-            new BitmapProperties1(format, 96, 96, BitmapOptions.Target));
-        using var readback = context.CreateBitmap(new SizeI(200, 100), IntPtr.Zero, 0,
-            new BitmapProperties1(format, 96, 96, BitmapOptions.CpuRead | BitmapOptions.CannotDraw));
-        using var layer = new GpuScreenSampleLayer(context);
-        for (int frame = 0; frame < 3; frame++)
-        {
-            var source = frame == 1 ? image.Clone() : image;
-            context.Target = target;
-            context.BeginDraw();
-            context.Clear(new Color4(0, 0, 0, 0));
-            layer.Draw(frame == 2 ? null : source, 0.5, 200, 100);
-            context.EndDraw().CheckError();
-            context.Target = null;
-            readback.CopyFromBitmap(target);
-            var mapped = readback.Map(MapOptions.Read);
-            try
-            {
-                byte alpha = ((byte*)mapped.Bits)[50 * mapped.Pitch + 50 * 4 + 3];
-                Check(frame == 2 ? alpha == 0 : alpha is >= 126 and <= 129,
-                    frame == 2 ? "Direct2D clears and releases disabled screen samples"
-                        : "Direct2D uploads changing sample frames and preserves overlay opacity");
-            }
-            finally { readback.Unmap(); }
-        }
-    }
-
-    private static void CheckSampleControls()
-    {
-        var window = new ControlWindow(Quiet, persistSettings: false)
-        {
-            ShowActivated = false, ShowInTaskbar = false, WindowStartupLocation = WindowStartupLocation.Manual,
-            Left = -30000, Top = -30000
-        };
-        T Control<T>(string name) => (T)window.FindName(name);
-        VisualizerSettings Current() => (VisualizerSettings)typeof(ControlWindow).GetField("_settings", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window)!;
-        try
-        {
-            window.Show();
-            var tabs = FindTabs((DependencyObject)window.Content);
-            tabs.SelectedItem = tabs.Items.Cast<TabItem>().First(tab => tab.Header is "Screen");
-            Check(!Current().ScreenSamplesEnabled && Control<ComboBox>("SampleBlendPicker").Items.Count == 6,
-                "The Screen tab initializes disabled with all six overlay effects");
-            Control<CheckBox>("ScreenSamplesToggle").IsChecked = true;
-            Control<ComboBox>("SampleBlendPicker").SelectedIndex = (int)ScreenSampleBlend.Negative;
-            Control<ComboBox>("SampleReactionPicker").SelectedIndex = (int)AudioReaction.Mid;
-            Control<Slider>("SampleBeatsSlider").Value = 4;
-            Control<Slider>("SampleOpacitySlider").Value = 55;
-            Control<Slider>("SampleZoomSlider").Value = 6;
-            Control<Slider>("SampleFadeSlider").Value = 950;
-            Check(Current().ScreenSamplesEnabled && Current().SampleBlend == ScreenSampleBlend.Negative
-                && Current().SampleReaction == AudioReaction.Mid && Current().SampleBeats == 4
-                && Current().SampleOpacity == 55 && Current().SampleZoom == 6 && Current().SampleFade == 950,
-                "Editing sample controls applies independent blend, timing, opacity, zoom, and frequency settings");
-            Check(Control<TextBlock>("SampleStatus").Text.StartsWith("Start the party")
-                && Control<TextBlock>("SampleBeatsLabel").Text.Contains("4 beats"),
-                "Sample descriptions explain when capture begins and how many beats each image lasts");
-            foreach (int width in new[] { 584, 510 })
-            {
-                window.Width = width;
-                window.Measure(new System.Windows.Size(width, 744));
-                window.Arrange(new Rect(0, 0, width, 744));
-                window.UpdateLayout();
-                var target = new RenderTargetBitmap(width, 744, 96, 96, PixelFormats.Pbgra32);
-                target.Render((Visual)window.Content);
-                SavePng(target, Path.Combine(Output, $"controls-Screen-{width}.png"));
-                ((ScrollViewer)((TabItem)tabs.SelectedItem).Content).ScrollToEnd();
-                window.UpdateLayout();
-                target = new RenderTargetBitmap(width, 744, 96, 96, PixelFormats.Pbgra32);
-                target.Render((Visual)window.Content);
-                SavePng(target, Path.Combine(Output, $"controls-Screen-{width}-bottom.png"));
-            }
-            Control<CheckBox>("ScreenSamplesToggle").IsChecked = false;
-            Check(Control<FrameworkElement>("ScreenSamplesPanel").Visibility == Visibility.Collapsed
-                && Control<System.Windows.Controls.Image>("SamplePreview").Source == null,
-                "Disabling screen samples hides their controls and clears the live preview");
-        }
-        finally
-        {
-            ((System.Windows.Threading.DispatcherTimer)typeof(ControlWindow).GetField("_saveTimer", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window)!).Stop();
-            window.Hide();
-        }
     }
 }

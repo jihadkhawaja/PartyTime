@@ -1,122 +1,33 @@
 using System;
-using System.Diagnostics;
-using System.Drawing;
-using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using System.Threading;
-using SharpGen.Runtime;
-using Color = System.Windows.Media.Color;
+using Avalonia.Media;
+using Avalonia.Platform;
 
 namespace PartyTime.Visualization;
 
-internal sealed partial class ScreenColorSampler : IDisposable
+internal sealed class ScreenColorSampler : IDisposable
 {
-    internal const int SampleWidth = 48;
-    internal const int SampleHeight = 28;
-    private const int Idle = 0, Sampling = 1, Disposed = 2;
-
+    internal const int SampleWidth = 48, SampleHeight = 28;
     private readonly Timer _timer;
-    private readonly Rectangle _bounds;
-    private GpuScreenCapture? _gpu;
+    private readonly DesktopCapture _capture;
+    private readonly byte[] _pixels = new byte[SampleWidth * SampleHeight * 4];
     private Color[]? _latest;
-    private long _lastGpuFailure;
-    private bool _tryGpu = true;
     private int _state;
-
-    public ScreenColorSampler(Rectangle bounds)
+    public ScreenColorSampler(Screen screen)
     {
-        _bounds = bounds;
+        _capture = new DesktopCapture(screen, SampleWidth, SampleHeight);
         _timer = new Timer(_ => Sample(), null, TimeSpan.Zero, TimeSpan.FromMilliseconds(250));
     }
-
     public Color[]? Latest => Volatile.Read(ref _latest);
-
-    public void Dispose()
-    {
-        _timer.Dispose();
-        if (Interlocked.Exchange(ref _state, Disposed) == Idle)
-            _gpu?.Dispose();
-    }
-
     private void Sample()
     {
-        if (Interlocked.CompareExchange(ref _state, Sampling, Idle) != Idle)
-            return;
-
-        try
-        {
-            try
-            {
-                if (_gpu == null && _tryGpu
-                    && (_lastGpuFailure == 0 || Stopwatch.GetElapsedTime(_lastGpuFailure).TotalSeconds >= 5))
-                {
-                    _gpu = GpuScreenCapture.Open(_bounds);
-                    _tryGpu = _gpu != null;
-                }
-
-                if (_gpu != null)
-                {
-                    if (_gpu.TryReadPalette(out var palette))
-                        Volatile.Write(ref _latest, palette);
-                    return;
-                }
-            }
-            catch (SharpGenException ex)
-            {
-                Debug.WriteLine(ex);
-                _gpu?.Dispose();
-                _gpu = null;
-                _lastGpuFailure = Stopwatch.GetTimestamp();
-            }
-            Volatile.Write(ref _latest, ReadPalette(_bounds));
-        }
-        catch (Exception ex) when (ex is ExternalException or ArgumentException or InvalidOperationException)
-        {
-            Debug.WriteLine(ex);
-            Volatile.Write(ref _latest, null);
-        }
-        finally
-        {
-            if (Interlocked.CompareExchange(ref _state, Idle, Sampling) == Disposed)
-                _gpu?.Dispose();
-        }
+        if (Interlocked.CompareExchange(ref _state, 1, 0) != 0) return;
+        try { if (_capture.ReadPixels(_pixels)) Volatile.Write(ref _latest, ExtractPalette(_pixels, SampleWidth * 4)); }
+        catch (Exception ex) when (ex is ExternalException or InvalidOperationException or System.IO.IOException) { Volatile.Write(ref _latest, null); }
+        finally { if (Interlocked.CompareExchange(ref _state, 0, 1) == 2) _capture.Dispose(); }
     }
-
-    private static unsafe Color[]? ReadPalette(Rectangle bounds)
-    {
-        using var sample = new Bitmap(SampleWidth, SampleHeight, PixelFormat.Format32bppRgb);
-        using var graphics = Graphics.FromImage(sample);
-        IntPtr screen = GetDC(IntPtr.Zero);
-        if (screen == IntPtr.Zero)
-            return null;
-
-        try
-        {
-            IntPtr destination = graphics.GetHdc();
-            try
-            {
-                const uint sourceCopy = 0x00CC0020;
-                if (!StretchBlt(destination, 0, 0, sample.Width, sample.Height, screen,
-                    bounds.X, bounds.Y, bounds.Width, bounds.Height, sourceCopy))
-                    return null;
-            }
-            finally { graphics.ReleaseHdc(destination); }
-        }
-        finally { ReleaseDC(IntPtr.Zero, screen); }
-
-        var data = sample.LockBits(new Rectangle(0, 0, SampleWidth, SampleHeight), ImageLockMode.ReadOnly, PixelFormat.Format32bppRgb);
-        try
-        {
-            int stride = data.Stride;
-            var start = (byte*)data.Scan0 + Math.Min(0, stride) * (SampleHeight - 1);
-            return ExtractPalette(new ReadOnlySpan<byte>(start, Math.Abs(stride) * SampleHeight), stride);
-        }
-        finally
-        {
-            sample.UnlockBits(data);
-        }
-    }
-
+    public void Dispose() { _timer.Dispose(); if (Interlocked.Exchange(ref _state, 2) == 0) _capture.Dispose(); }
     internal static Color[]? ExtractPalette(ReadOnlySpan<byte> pixels, int stride)
     {
         const int bucketCount = 13;
@@ -173,12 +84,4 @@ internal sealed partial class ScreenColorSampler : IDisposable
 
     private struct Bucket { public double Weight, Red, Green, Blue; }
 
-    [LibraryImport("user32.dll")]
-    private static partial IntPtr GetDC(IntPtr window);
-    [LibraryImport("user32.dll")]
-    private static partial int ReleaseDC(IntPtr window, IntPtr dc);
-    [LibraryImport("gdi32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool StretchBlt(IntPtr destination, int x, int y, int width, int height,
-        IntPtr source, int sourceX, int sourceY, int sourceWidth, int sourceHeight, uint operation);
 }

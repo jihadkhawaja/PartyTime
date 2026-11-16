@@ -2,12 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using Microsoft.Win32;
+using Avalonia;
+using Avalonia.Interactivity;
+using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Media;
+using Avalonia.Media.Imaging;
+using BitmapSource = Avalonia.Media.Imaging.Bitmap;
+using Avalonia.Platform.Storage;
 using PartyTime.Settings;
 using PartyTime.Visualization;
 
@@ -27,7 +29,7 @@ public partial class ControlWindow
         ImagePlacement.ItemsSource = new[] { "Sticker", "Image halo", "Floating images", "Replace dots / sparks" };
         foreach (var slider in new[] { ImageSize, ImageOpacity, ImageCount, ImageX, ImageY, ImageKeyTolerance })
         {
-            slider.PreviewMouseLeftButtonUp += ImageSliderCommitted;
+            slider.AddHandler(PointerReleasedEvent, ImageSliderCommitted, Avalonia.Interactivity.RoutingStrategies.Bubble, handledEventsToo: true);
             slider.KeyUp += ImageSliderKeyUp;
         }
     }
@@ -36,7 +38,7 @@ public partial class ControlWindow
     {
         get
         {
-            var ids = ImageList.SelectedItems.Cast<OverlayImageSettings>().Select(image => image.Id).ToHashSet();
+            var ids = ImageList.SelectedItems!.Cast<OverlayImageSettings>().Select(image => image.Id).ToHashSet();
             return _settings.Images.Where(image => ids.Contains(image.Id)).ToArray();
         }
     }
@@ -49,11 +51,11 @@ public partial class ControlWindow
         _editingImage = true;
         try
         {
-            ImageList.SelectedItems.Clear();
+            ImageList.SelectedItems!.Clear();
             ImageList.ItemsSource = _settings.Images;
             foreach (var image in _settings.Images.Where(image => ids.Contains(image.Id)))
-                ImageList.SelectedItems.Add(image);
-            if (ImageList.SelectedItems.Count == 0 && _settings.Images.Length > 0)
+                ImageList.SelectedItems!.Add(image);
+            if (ImageList.SelectedItems!.Count == 0 && _settings.Images.Length > 0)
                 ImageList.SelectedIndex = 0;
         }
         finally { _editingImage = false; }
@@ -64,7 +66,7 @@ public partial class ControlWindow
             LoadImageEditor();
     }
 
-    private void ImageSelected(object sender, SelectionChangedEventArgs e)
+    private void ImageSelected(object? sender, SelectionChangedEventArgs e)
     {
         if (!_editingImage)
             LoadImageEditor();
@@ -74,7 +76,7 @@ public partial class ControlWindow
     {
         var selected = SelectedImages;
         var image = selected.FirstOrDefault();
-        ImageEditor.Visibility = image == null ? Visibility.Collapsed : Visibility.Visible;
+        ImageEditor.IsVisible = image == null ? false : true;
         RemoveImageButton.IsEnabled = image != null;
         _pickingImageColor = false;
         if (image == null)
@@ -101,16 +103,16 @@ public partial class ControlWindow
             ImageChromaKey.IsChecked = Mixed(selected, item => item.ChromaKeyEnabled) ? null : image.ChromaKeyEnabled;
             ImageKeyColor.Text = Mixed(selected, item => item.ChromaKeyColor) ? "" : image.ChromaKeyColor;
             ImageKeyTolerance.Value = image.ChromaKeyTolerance;
-            ImageKeyColorError.Visibility = Visibility.Collapsed;
+            ImageKeyColorError.IsVisible = false;
         }
         finally { _editingImage = false; }
         RefreshImageDescriptions(image);
         ImageError.Text = OverlayImageStore.Load(image.Path) == null
             ? "This image is unavailable. Remove it and add the PNG again." : "";
-        ImageError.Visibility = ImageError.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+        ImageError.IsVisible = ImageError.Text.Length == 0 ? false : true;
     }
 
-    private void ImageSettingsChanged(object sender, RoutedEventArgs e)
+    private void ImageSettingsChanged(object? sender, RoutedEventArgs e)
     {
         if (!_ready || _editingImage)
             return;
@@ -119,9 +121,9 @@ public partial class ControlWindow
             return;
         bool validKeyColor = VisualizerSettings.TryReadColor(ImageKeyColor.Text, out var keyColor);
         if (ReferenceEquals(sender, ImageKeyColor))
-            ImageKeyColorError.Visibility = validKeyColor ? Visibility.Collapsed : Visibility.Visible;
+            ImageKeyColorError.IsVisible = validKeyColor ? false : true;
         // Apply only the edited field; other values may differ across the selection.
-        Func<OverlayImageSettings, OverlayImageSettings>? update = (sender as FrameworkElement)?.Name switch
+        Func<OverlayImageSettings, OverlayImageSettings>? update = (sender as Control)?.Name switch
         {
             nameof(ImageName) when selected.Length == 1 => image => image with { Name = string.IsNullOrWhiteSpace(ImageName.Text) ? "Image" : ImageName.Text },
             nameof(ImageEnabled) when ImageEnabled.IsChecked != null => image => image with { Enabled = ImageEnabled.IsChecked == true },
@@ -153,19 +155,19 @@ public partial class ControlWindow
     private static bool Mixed<T>(OverlayImageSettings[] selected, Func<OverlayImageSettings, T> value)
         => selected.Select(value).Distinct().Skip(1).Any();
 
-    private void ImageSliderCommitted(object sender, MouseButtonEventArgs e) => ImageSettingsChanged(sender, e);
+    private void ImageSliderCommitted(object? sender, PointerReleasedEventArgs e) => ImageSettingsChanged(sender, e);
 
-    private void ImageSliderKeyUp(object sender, KeyEventArgs e)
+    private void ImageSliderKeyUp(object? sender, KeyEventArgs e)
     {
         if (e.Key is Key.Left or Key.Right or Key.Up or Key.Down or Key.Home or Key.End or Key.PageUp or Key.PageDown)
             ImageSettingsChanged(sender, e);
     }
 
-    private void SelectAllImagesClicked(object sender, RoutedEventArgs e) => ImageList.SelectAll();
+    private void SelectAllImagesClicked(object? sender, RoutedEventArgs e) => ImageList.SelectAll();
 
-    private void ImageListKeyDown(object sender, KeyEventArgs e)
+    private void ImageListKeyDown(object? sender, KeyEventArgs e)
     {
-        if (e.Key == Key.A && Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+        if (e.Key == Key.A && e.KeyModifiers.HasFlag(KeyModifiers.Control))
         {
             ImageList.SelectAll();
             e.Handled = true;
@@ -187,15 +189,15 @@ public partial class ControlWindow
         ImageYLabel.Text = $"Vertical position · {State(item => item.Y)}{image.Y}%";
         ImageKeyToleranceLabel.Text = $"Color tolerance · {State(item => item.ChromaKeyTolerance)}{image.ChromaKeyTolerance}%";
         ChromaKeyControls.IsEnabled = selected.Any(item => item.ChromaKeyEnabled);
-        ImageKeyColorMixed.Visibility = Mixed(selected, item => item.ChromaKeyColor) ? Visibility.Visible : Visibility.Collapsed;
+        ImageKeyColorMixed.IsVisible = Mixed(selected, item => item.ChromaKeyColor) ? true : false;
         if (!ChromaKeyControls.IsEnabled)
             _pickingImageColor = false;
         VisualizerSettings.TryReadColor(image.ChromaKeyColor, out var keyColor);
         ImageKeySwatch.Background = new SolidColorBrush(keyColor);
         RefreshImagePreview(image);
-        ImageCountPanel.Visibility = selected.Any(item => item.Layout != ImageLayout.Sticker) ? Visibility.Visible : Visibility.Collapsed;
-        ImagePositionPanel.Visibility = selected.Any(item => item.Layout is ImageLayout.Sticker or ImageLayout.Halo)
-            ? Visibility.Visible : Visibility.Collapsed;
+        ImageCountPanel.IsVisible = selected.Any(item => item.Layout != ImageLayout.Sticker) ? true : false;
+        ImagePositionPanel.IsVisible = selected.Any(item => item.Layout is ImageLayout.Sticker or ImageLayout.Halo)
+            ? true : false;
         ImagePlacementHelp.Text = Mixed(selected, item => item.Layout) ? "Mixed placements. Choosing a placement applies it to all selected images." : image.Layout switch
         {
             ImageLayout.Halo => "Repeats images around a circle. Images at the same position alternate in list order, with space reserved for each copy.",
@@ -208,7 +210,7 @@ public partial class ControlWindow
     private void RefreshImagePreview(OverlayImageSettings image)
     {
         ImagePreview.Source = _pickingImageColor ? OverlayImageStore.Load(image.Path) : OverlayImageStore.Load(image);
-        ImagePreview.Cursor = _pickingImageColor ? Cursors.Cross : Cursors.Arrow;
+        ImagePreview.Cursor = _pickingImageColor ? new Cursor(StandardCursorType.Cross) : new Cursor(StandardCursorType.Arrow);
         PickImageColorButton.Content = _pickingImageColor ? "Cancel picker" : "Pick from image";
         ImagePreviewHint.Text = _pickingImageColor
             ? SelectedImages.Length > 1 ? "Showing the original. Click a color to use for all selected images."
@@ -218,7 +220,7 @@ public partial class ControlWindow
             : "The checkerboard shows transparent areas. Enable Remove a color to pick a background color.";
     }
 
-    private void PickImageColorClicked(object sender, RoutedEventArgs e)
+    private void PickImageColorClicked(object? sender, RoutedEventArgs e)
     {
         if (SelectedImage is not { } image)
             return;
@@ -228,11 +230,11 @@ public partial class ControlWindow
             ImagePreview.BringIntoView();
     }
 
-    private void ImagePreviewClicked(object sender, MouseButtonEventArgs e)
+    private void ImagePreviewClicked(object? sender, PointerPressedEventArgs e)
     {
         if (!_pickingImageColor || SelectedImage is not { } image || OverlayImageStore.Load(image.Path) is not { } original)
             return;
-        var color = PickPreviewColor(original, e.GetPosition(ImagePreview), ImagePreview.ActualWidth, ImagePreview.ActualHeight);
+        var color = PickPreviewColor(original, e.GetPosition(ImagePreview), ImagePreview.Bounds.Width, ImagePreview.Bounds.Height);
         if (color == null)
             return;
         e.Handled = true;
@@ -248,36 +250,39 @@ public partial class ControlWindow
 
     internal static Color? PickPreviewColor(BitmapSource original, Point point, double width, double height)
     {
-        double scale = Math.Min(width / original.PixelWidth, height / original.PixelHeight);
+        double scale = Math.Min(width / original.PixelSize.Width, height / original.PixelSize.Height);
         if (scale <= 0)
             return null;
-        double x = (point.X - (width - original.PixelWidth * scale) / 2) / scale;
-        double y = (point.Y - (height - original.PixelHeight * scale) / 2) / scale;
-        if (x < 0 || y < 0 || x >= original.PixelWidth || y >= original.PixelHeight)
+        double x = (point.X - (width - original.PixelSize.Width * scale) / 2) / scale;
+        double y = (point.Y - (height - original.PixelSize.Height * scale) / 2) / scale;
+        if (x < 0 || y < 0 || x >= original.PixelSize.Width || y >= original.PixelSize.Height)
             return null;
         return OverlayImageStore.ReadPixel(original, (int)x, (int)y);
     }
 
-    private void AddImageClicked(object sender, RoutedEventArgs e)
+    private async void AddImageClicked(object? sender, RoutedEventArgs e)
     {
-        var picker = new OpenFileDialog
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "Add overlay images",
-            Filter = "Image files (*.png;*.jpg;*.jpeg;*.bmp)|*.png;*.jpg;*.jpeg;*.bmp|PNG images (*.png)|*.png|JPEG images (*.jpg;*.jpeg)|*.jpg;*.jpeg|Bitmap images (*.bmp)|*.bmp",
-            Multiselect = true,
-            CheckFileExists = true
-        };
-        if (picker.ShowDialog(this) != true)
-            return;
+            Title = "Add overlay images", AllowMultiple = true,
+            FileTypeFilter = [new FilePickerFileType("Images") { Patterns = ["*.png", "*.jpg", "*.jpeg", "*.bmp"] }]
+        });
+        if (files.Count == 0) return;
         var images = _settings.Images.ToList();
         var errors = new List<string>();
         var addedIds = new List<string>();
-        foreach (string path in picker.FileNames)
+        foreach (var file in files)
+        {
+            string? path = file.TryGetLocalPath();
+            if (path == null) { errors.Add("Choose a local image file."); continue; }
+            AddLocalImage(path);
+        }
+        void AddLocalImage(string path)
         {
             if (images.Count >= 16)
             {
                 errors.Add("You can add up to 16 images. Remove an image to add another.");
-                break;
+                return;
             }
             try
             {
@@ -293,18 +298,18 @@ public partial class ControlWindow
         _settings = _settings with { Images = images.ToArray() };
         RefreshImageList(addedIds.Count > 0 ? addedIds : null);
         ImageError.Text = string.Join(Environment.NewLine, errors);
-        ImageError.Visibility = errors.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        ImageError.IsVisible = errors.Count > 0 ? true : false;
         SaveImageChanges();
     }
 
-    private void RemoveImageClicked(object sender, RoutedEventArgs e)
+    private void RemoveImageClicked(object? sender, RoutedEventArgs e)
     {
         var ids = SelectedImages.Select(image => image.Id).ToHashSet();
         if (ids.Count == 0)
             return;
         _settings = _settings with { Images = _settings.Images.Where(item => !ids.Contains(item.Id)).ToArray() };
         RefreshImageList();
-        ImageError.Visibility = Visibility.Collapsed;
+        ImageError.IsVisible = false;
         SaveImageChanges();
     }
 

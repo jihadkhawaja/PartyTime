@@ -1,0 +1,51 @@
+name: Publish desktop apps
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  publish:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-2025, runtime: win-x64 }
+          - { os: windows-2025, runtime: win-arm64 }
+          - { os: ubuntu-24.04, runtime: linux-x64 }
+          - { os: ubuntu-24.04, runtime: linux-arm64 }
+          - { os: macos-15, runtime: osx-x64 }
+          - { os: macos-15, runtime: osx-arm64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+      - name: Verify portable rendering and settings
+        run: dotnet run --project Tests/PartyTime.Tests.csproj -c Release
+      - name: Publish self-contained app
+        shell: bash
+        run: bash scripts/publish.sh '${{ matrix.runtime }}'
+      - uses: actions/upload-artifact@v6
+        with:
+          name: PartyTime-${{ matrix.runtime }}
+          path: |
+            artifacts/PartyTime-${{ matrix.runtime }}.exe
+            artifacts/PartyTime-${{ matrix.runtime }}.tar.gz
+          if-no-files-found: error
+      - name: Attach package to release
+        if: github.event_name == 'release'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RUNTIME: ${{ matrix.runtime }}
+        run: |
+          if [[ "$RUNTIME" == win-* ]]; then extension=exe; else extension=tar.gz; fi
+          gh release upload --repo "$GITHUB_REPOSITORY" -- "$RELEASE_TAG" "artifacts/PartyTime-$RUNTIME.$extension"

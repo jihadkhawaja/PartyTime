@@ -1,117 +1,95 @@
 using System;
-using System.Windows;
-using System.Windows.Interop;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Media;
+using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 using PartyTime.Interop;
-using Rectangle = System.Drawing.Rectangle;
 
 namespace PartyTime.Visualization;
 
 internal sealed class OverlayWindow : Window
 {
     public OverlaySurface Surface { get; } = new();
-    public IntPtr Handle => new WindowInteropHelper(this).Handle;
-
     public OverlayWindow()
     {
         Title = "PartyTime Overlay";
-        Width = 100;
-        Height = 100;
-        WindowStyle = WindowStyle.None;
-        AllowsTransparency = true;
+        Width = Height = 100;
+        WindowDecorations = WindowDecorations.None;
+        TransparencyLevelHint = [WindowTransparencyLevel.Transparent];
         Background = Brushes.Transparent;
-        ResizeMode = ResizeMode.NoResize;
+        CanResize = false;
         ShowActivated = false;
         ShowInTaskbar = false;
         Topmost = true;
         Focusable = false;
+        IsHitTestVisible = false;
         Content = Surface;
     }
 
-    public void Open(Rectangle bounds)
+    public void Open(Screen screen)
     {
-        Surface.DesktopOrigin = new Point(bounds.X, bounds.Y);
-        IntPtr handle = new WindowInteropHelper(this).EnsureHandle();
-        Desktop.MakeClickThrough(handle);
+        Position = screen.Bounds.Position;
+        Width = screen.Bounds.Width / screen.Scaling;
+        Height = screen.Bounds.Height / screen.Scaling;
+        Surface.DesktopOrigin = new Point(screen.Bounds.X, screen.Bounds.Y);
+        Surface.Scaling = screen.Scaling;
         Show();
-        Desktop.PlaceOverlay(handle, bounds);
+        try { Desktop.MakeClickThrough(this); }
+        catch { Close(); throw; }
     }
-
-    public bool SetCaptureExcluded(bool exclude)
-        => Desktop.SetCaptureExcluded(Handle, exclude);
+    public bool SetCaptureExcluded(bool exclude) => Desktop.SetCaptureExcluded(this, exclude);
 }
 
-internal sealed class OverlaySurface : FrameworkElement
+internal sealed class OverlaySurface : Panel
 {
-    private readonly DrawingVisual _baseDrawing = new();
-    private readonly DrawingVisual _cursorDrawing = new();
-    private readonly DrawingVisual _sampleDrawing = new();
-    private BitmapSource? _sample;
-    private double _sampleOpacity;
-    private Scene? _scene;
-    private bool _baseVisible;
-    private bool _cursorVisible;
+    private readonly SceneLayer _base = new(false);
+    private readonly SceneLayer _cursor = new(true);
+    private readonly SampleLayer _sample = new();
     public Point DesktopOrigin { get; set; }
-
+    public double Scaling { get; set; } = 1;
     public OverlaySurface()
     {
         ClipToBounds = true;
-        AddVisualChild(_sampleDrawing);
-        AddVisualChild(_baseDrawing);
-        AddVisualChild(_cursorDrawing);
+        Children.Add(_sample);
+        Children.Add(_base);
+        Children.Add(_cursor);
     }
-
-    protected override int VisualChildrenCount => 3;
-    protected override Visual GetVisualChild(int index) => index switch
+    public void ShowScene(Scene? scene, bool redrawBase = true, bool drawCursor = true, Bitmap? sample = null, double sampleOpacity = 0)
     {
-        0 => _sampleDrawing, 1 => _baseDrawing, 2 => _cursorDrawing, _ => throw new ArgumentOutOfRangeException(nameof(index))
-    };
-
-    public void ShowScene(Scene? scene, bool redrawBase = true, bool drawCursor = true, BitmapSource? sample = null, double sampleOpacity = 0)
-    {
-        _scene = scene;
-        _sample = sample;
-        _sampleOpacity = sampleOpacity;
-        Draw(redrawBase, drawCursor);
-    }
-
-    protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)
-    {
-        base.OnRenderSizeChanged(sizeInfo);
-        Draw(true, _cursorVisible);
-    }
-
-    private void Draw(bool redrawBase, bool drawCursor)
-    {
-        if (ActualWidth <= 0 || ActualHeight <= 0)
-            return;
         if (redrawBase)
         {
-            using var drawing = _sampleDrawing.RenderOpen();
-            if (_sample != null && _sampleOpacity > 0)
-            {
-                drawing.PushOpacity(_sampleOpacity);
-                drawing.DrawImage(_sample, new Rect(0, 0, ActualWidth, ActualHeight));
-                drawing.Pop();
-            }
+            _base.Scene = scene;
+            _base.InvalidateVisual();
+            _sample.Sample = sample;
+            _sample.SampleOpacity = sampleOpacity;
+            _sample.InvalidateVisual();
         }
-        if (redrawBase && (_baseVisible || _scene?.BaseVisible == true))
+        _cursor.Scene = drawCursor ? scene : null;
+        _cursor.DesktopOrigin = DesktopOrigin;
+        _cursor.Scaling = Scaling;
+        _cursor.InvalidateVisual();
+    }
+    private sealed class SampleLayer : Control
+    {
+        public Bitmap? Sample;
+        public double SampleOpacity;
+        public override void Render(DrawingContext context)
         {
-            using var drawing = _baseDrawing.RenderOpen();
-            _baseVisible = _scene?.BaseVisible == true;
-            if (_baseVisible)
-                _scene!.DrawBase(new WpfSceneDrawing(drawing), ActualWidth, ActualHeight);
+            if (Sample == null || SampleOpacity < 0.005) return;
+            using var state = context.PushOpacity(SampleOpacity);
+            context.DrawImage(Sample, new Rect(Bounds.Size));
         }
-        if (drawCursor || _cursorVisible)
+    }
+    private sealed class SceneLayer(bool cursor) : Control
+    {
+        public Scene? Scene;
+        public Point DesktopOrigin;
+        public double Scaling = 1;
+        public override void Render(DrawingContext context)
         {
-            using var drawing = _cursorDrawing.RenderOpen();
-            _cursorVisible = drawCursor && _scene?.HasCursorTrail == true;
-            if (_cursorVisible)
-            {
-                var dpi = VisualTreeHelper.GetDpi(this);
-                _scene!.DrawCursor(new WpfSceneDrawing(drawing), ActualWidth, ActualHeight, DesktopOrigin, dpi.DpiScaleX, dpi.DpiScaleY);
-            }
+            if (cursor) Scene?.DrawCursor(new AvaloniaSceneDrawing(context), Bounds.Width, Bounds.Height, DesktopOrigin, Scaling, Scaling);
+            else if (Scene?.BaseVisible == true) Scene.DrawBase(new AvaloniaSceneDrawing(context), Bounds.Width, Bounds.Height);
         }
     }
 }

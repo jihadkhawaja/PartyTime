@@ -4,6 +4,7 @@ using Microsoft.Win32;
 
 namespace PartyTime.Interop;
 
+[System.Runtime.Versioning.SupportedOSPlatform("windows")]
 internal static class WindowsStartup
 {
     public const string TrayArgument = "--startup";

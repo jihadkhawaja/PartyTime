@@ -1,6 +1,6 @@
 using System;
-using System.Windows;
-using System.Windows.Media;
+using Avalonia;
+using Avalonia.Media;
 using PartyTime.Audio;
 using PartyTime.Settings;
 
@@ -41,7 +41,7 @@ internal sealed partial class Scene
         double radius = unit * 0.028;
         drawing.DrawRoundedRectangle(null, new Pen(SpectrumBrush(opacity), thickness), bounds, radius);
         double gap = unit * (0.021 + _drive * 0.017 + _pulse * 0.025);
-        bounds.Inflate(-gap, -gap);
+        bounds = bounds.Inflate(-gap);
         drawing.DrawRoundedRectangle(null, new Pen(SpectrumBrush(opacity * 0.52), thickness * 0.65), bounds, radius);
     }
 
@@ -187,7 +187,7 @@ internal sealed partial class Scene
         for (int i = 0; i < corners.Length; i++)
         {
             Color color = _colors[i];
-            var brush = new RadialGradientBrush(Alpha(color, opacity * 0.7), Alpha(color, 0));
+            var brush = new RadialGradientBrush { GradientStops = [new(Alpha(color, opacity * 0.7), 0), new(Alpha(color, 0), 1)] };
             brush.GradientStops.Insert(1, new GradientStop(Alpha(color, opacity * 0.18), 0.56));
             drawing.DrawEllipse(brush, null, corners[i], radius);
         }
@@ -218,7 +218,7 @@ internal sealed partial class Scene
     {
         double bandHeight = unit * (0.18 + _pulse * 0.14);
         double y = (height + bandHeight) * (_phase / 4) - bandHeight;
-        var brush = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(0, 1) };
+        var brush = new LinearGradientBrush { StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative) };
         brush.GradientStops.Add(new GradientStop(Alpha(_colors[0], 0), 0));
         brush.GradientStops.Add(new GradientStop(Alpha(_colors[0], opacity * 0.19), 0.40));
         brush.GradientStops.Add(new GradientStop(Alpha(_colors[2], opacity * 0.40), 0.72));
@@ -229,7 +229,7 @@ internal sealed partial class Scene
     private static Pen RoundedPen(Color color, double opacity, double thickness)
         => new(new SolidColorBrush(Alpha(color, opacity)), thickness)
         {
-            StartLineCap = PenLineCap.Round,
-            EndLineCap = PenLineCap.Round
+            LineCap = PenLineCap.Round,
+
         };
 }
