@@ -15,6 +15,14 @@ dotnet publish "$root/PartyTime.csproj" -c Release -r "$runtime" --self-containe
   -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -o "$output"
 
 if [[ "$runtime" == osx-* ]]; then
+  helper="$output/Native/macOS/PartyTimeCapture"
+  if [[ ! -f "$helper" ]]; then
+    echo "The published macOS capture helper is missing: $helper" >&2
+    echo "PartyTimeCapture must be built and copied outside the .NET single-file bundle (ExcludeFromSingleFile=true)." >&2
+    exit 1
+  fi
+  if [[ "$runtime" == osx-arm64 ]]; then architecture=arm64; else architecture=x86_64; fi
+  lipo -verify_arch "$architecture" "$helper"
   bundle="$root/artifacts/$runtime-app/PartyTime.app"
   mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources"
   cp -R "$output/." "$bundle/Contents/MacOS/"
@@ -31,7 +39,9 @@ if [[ "$runtime" == osx-* ]]; then
   iconutil -c icns "$iconset" -o "$bundle/Contents/Resources/PartyTime.icns"
   codesign --force --sign - --identifier com.partytime.capture "$bundle/Contents/MacOS/Native/macOS/PartyTimeCapture"
   codesign --force --deep --sign - "$bundle"
+  codesign --verify --deep --strict "$bundle"
   tar -czf "$root/artifacts/PartyTime-$runtime.tar.gz" -C "$(dirname "$bundle")" PartyTime.app
+  tar -tzf "$root/artifacts/PartyTime-$runtime.tar.gz" "PartyTime.app/Contents/MacOS/Native/macOS/PartyTimeCapture" >/dev/null
 elif [[ "$runtime" == linux-* ]]; then
   chmod +x "$output/PartyTime"
   cp "$root/Assets/PartyTime-v2.png" "$output/PartyTime.png"
