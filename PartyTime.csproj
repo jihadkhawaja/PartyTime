@@ -29,8 +29,9 @@
     <MacCaptureArchitecture Condition="'$(MacCaptureArchitecture)' == ''">x86_64</MacCaptureArchitecture>
   </PropertyGroup>
   <ItemGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+    <!-- This is a child executable: packaging and MacCapture need it beside the app, not inside the single-file bundle. -->
     <None Include="$(MacCapturePath)" Link="Native/macOS/PartyTimeCapture" TargetPath="Native/macOS/PartyTimeCapture"
-          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
   </ItemGroup>
   <Target Name="BuildMacCapture" BeforeTargets="PrepareForBuild" Condition="$([MSBuild]::IsOSPlatform('OSX'))"
           Inputs="Native/macOS/PartyTimeCapture.swift;PartyTime.csproj" Outputs="$(MacCapturePath)">

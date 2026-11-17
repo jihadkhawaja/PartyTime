@@ -24,6 +24,13 @@ jobs:
         run: dotnet build PartyTime.csproj -c Release
       - name: Run portable analysis, rendering, and controls checks
         run: dotnet run --project Tests/PartyTime.Tests.csproj -c Release
+      - name: Verify macOS single-file app packages
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          for runtime in osx-x64 osx-arm64; do
+            bash scripts/publish.sh "$runtime"
+          done
       - uses: actions/upload-artifact@v6
         if: always()
         with:
