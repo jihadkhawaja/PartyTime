@@ -87,10 +87,14 @@ public partial class ControlWindow : Window
     internal void ConfigureStartup(string[] args)
     {
         // Always keep controls reachable on desktops without a system tray host.
-        Opened += (_, _) =>
+        if (!args.Contains(AppStartup.TrayArgument) || !CanHideToTray) return;
+
+        Opened += HideOnStartup;
+        void HideOnStartup(object? sender, EventArgs e)
         {
-            if (args.Contains(AppStartup.TrayArgument) && CanHideToTray) Hide();
-        };
+            Opened -= HideOnStartup;
+            Hide();
+        }
     }
 
     protected override void OnClosing(WindowClosingEventArgs e)
@@ -281,6 +285,7 @@ public partial class ControlWindow : Window
             SampleBeats = (int)SampleBeatsSlider.Value,
             SampleOpacity = (int)SampleOpacitySlider.Value,
             SampleZoom = (int)SampleZoomSlider.Value,
+            SampleEffectStrength = (int)SampleStrengthSlider.Value,
             SampleFade = (int)SampleFadeSlider.Value,
             FrameRate = ReadChoice<OverlayFrameRate>(FrameRateChoices),
             Intensity = (int)IntensitySlider.Value,

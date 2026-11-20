@@ -41,7 +41,7 @@ internal static partial class Program
             string image = CreateImage();
             CheckScene(image); CheckImagePlacement(image); CheckChromaKey();
             CheckSkiaRendering(image);
-            CheckMotion(); CheckScreenSamples(); CheckScreenPerformance(); CheckPresets(); CheckTransparency(image); CheckControls(image); CheckBulkControls(image);
+            CheckMotion(); CheckScreenSamples(); CheckScreenPerformance(); CheckNewScreenEffects(); CheckPresets(); CheckTransparency(image); CheckControls(image); CheckBulkControls(image);
             Console.WriteLine($"Passed {_checks} checks. Rendered checks: {Output}");
             return 0;
         }

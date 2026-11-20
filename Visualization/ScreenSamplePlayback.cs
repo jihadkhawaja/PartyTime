@@ -8,10 +8,13 @@ namespace PartyTime.Visualization;
 internal sealed record ScreenSampleRequest(VisualizerSettings Settings, long BeatTimestamp, long Generation)
 {
     public double Pulse(long now) => Math.Exp(-Math.Max(0, Stopwatch.GetElapsedTime(BeatTimestamp, now).TotalSeconds) / 0.16);
+    public double Zoom(long now) => 1 + Settings.SampleZoom / 100.0 * Pulse(now);
+    public double LiveZoom(long now) => Settings.SampleBlend == ScreenSampleBlend.ZoomOnly ? Zoom(now) : 1;
 
     public double Opacity(long now)
     {
-        if (!Settings.ScreenSamplesEnabled || BeatTimestamp == 0) return 0;
+        if (!Settings.ScreenSamplesEnabled || BeatTimestamp == 0
+            || Settings.SampleBlend == ScreenSampleBlend.ZoomOnly && Settings.SampleZoom == 0) return 0;
         double age = Math.Max(0, Stopwatch.GetElapsedTime(BeatTimestamp, now).TotalSeconds);
         double fade = Math.Clamp(1 - age / (Settings.SampleFade / 1000.0), 0, 1);
         return Settings.SampleOpacity / 100.0 * fade * (0.65 + 0.35 * Pulse(now));

@@ -2,10 +2,8 @@ using System;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
-using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using PartyTime.Interop;
-using PartyTime.Settings;
 
 namespace PartyTime.Visualization;
 
@@ -47,7 +45,6 @@ internal sealed class OverlaySurface : Panel, IDisposable
 {
     private readonly SceneLayer _base = new(false);
     private readonly SceneLayer _cursor = new(true);
-    private readonly SampleLayer _sample = new();
     private readonly ScreenSampleLayer _screen = new();
     private bool _baseVisible, _cursorVisible;
     public Point DesktopOrigin { get; set; }
@@ -55,24 +52,17 @@ internal sealed class OverlaySurface : Panel, IDisposable
     public OverlaySurface()
     {
         ClipToBounds = true;
-        Children.Add(_sample);
         Children.Add(_screen);
         Children.Add(_base);
         Children.Add(_cursor);
     }
-    public void ShowScene(Scene? scene, bool redrawBase = true, bool drawCursor = true, Bitmap? sample = null, double sampleOpacity = 0)
+    public void ShowScene(Scene? scene, bool redrawBase = true, bool drawCursor = true)
     {
         if (redrawBase)
         {
             bool visible = scene?.BaseVisible == true;
             if (visible || _baseVisible) { _base.Scene = scene; _base.InvalidateVisual(); }
             _baseVisible = visible;
-            if (_sample.Sample != sample || _sample.SampleOpacity != sampleOpacity)
-            {
-                _sample.Sample = sample;
-                _sample.SampleOpacity = sampleOpacity;
-                _sample.InvalidateVisual();
-            }
         }
         bool cursorVisible = drawCursor && scene?.HasCursorTrail == true;
         if (cursorVisible || _cursorVisible)
@@ -84,23 +74,11 @@ internal sealed class OverlaySurface : Panel, IDisposable
         }
         _cursorVisible = cursorVisible;
     }
-    public void ShowScreenSample(ScreenSampleFrame? frame, ScreenSampleRequest request, long now)
-        => _screen.ShowFrame(frame, request.Settings.SampleBlend,
-            1 + request.Settings.SampleZoom / 100.0 * request.Pulse(now), frame == null ? 0 : request.Opacity(now));
+    public void ShowScreenSample(ScreenSampleFrame? frame, double opacity, double zoom = 1)
+        => _screen.ShowFrame(frame, frame == null ? 0 : opacity, zoom);
 
-    public void ClearScreenSample() => _screen.ShowFrame(null, ScreenSampleBlend.Normal, 1, 0);
+    public void ClearScreenSample() => _screen.ShowFrame(null, 0);
     public void Dispose() { _screen.Dispose(); _base.Dispose(); _cursor.Dispose(); }
-    private sealed class SampleLayer : Control
-    {
-        public Bitmap? Sample;
-        public double SampleOpacity;
-        public override void Render(DrawingContext context)
-        {
-            if (Sample == null || SampleOpacity < 0.005) return;
-            using var state = context.PushOpacity(SampleOpacity);
-            context.DrawImage(Sample, new Rect(Bounds.Size));
-        }
-    }
     private sealed class SceneLayer(bool cursor) : Control, IDisposable
     {
         private SkiaSceneRenderer? _renderer;

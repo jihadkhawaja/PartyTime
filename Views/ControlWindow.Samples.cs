@@ -1,11 +1,11 @@
 using System;
+using System.Diagnostics;
 using Avalonia;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using PartyTime.Settings;
 using PartyTime.Visualization;
 using Avalonia.Controls;
-using System.Diagnostics;
 
 namespace PartyTime.Views;
 
@@ -27,7 +27,7 @@ public partial class ControlWindow
     private void InitializeSampleControls()
     {
         SamplePreview.Child = _samplePreviewLayer;
-        SampleBlendPicker.ItemsSource = new[] { "Normal", "Additive", "Screen", "Multiply", "Difference", "Negative" };
+        SampleBlendPicker.ItemsSource = new[] { "Normal", "Additive", "Screen", "Multiply", "Difference", "Negative", "Blur", "Zoom Only", "Pixelate" };
         SampleReactionPicker.ItemsSource = new[] { "Follow focus", "Full mix", "Low · bass", "Mid · instruments", "High · treble" };
         _samplePreviewTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
@@ -64,10 +64,9 @@ public partial class ControlWindow
     }
     private void SetSamplePreview(ScreenSampleFrame? frame)
     {
-        if (frame != null) { _samplePreviewLayer.Width = frame.Held.Size.Width; _samplePreviewLayer.Height = frame.Held.Size.Height; }
-        var request = _overlay?.SampleRequest;
-        double zoom = request == null ? 1 : 1 + request.Settings.SampleZoom / 100.0 * request.Pulse(Stopwatch.GetTimestamp());
-        _samplePreviewLayer.ShowFrame(frame, _settings.SampleBlend, zoom, frame == null ? 0 : 1);
+        if (frame != null) { _samplePreviewLayer.Width = frame.Bitmap.Size.Width; _samplePreviewLayer.Height = frame.Bitmap.Size.Height; }
+        double zoom = frame == null ? 1 : _overlay?.ScreenSampleZoom(Stopwatch.GetTimestamp()) ?? 1;
+        _samplePreviewLayer.ShowFrame(frame, frame == null ? 0 : 1, zoom);
     }
     private void RenderSamplePreview()
     {
@@ -82,12 +81,16 @@ public partial class ControlWindow
         SampleBeatsSlider.Value = _settings.SampleBeats;
         SampleOpacitySlider.Value = _settings.SampleOpacity;
         SampleZoomSlider.Value = _settings.SampleZoom;
+        SampleStrengthSlider.Value = _settings.SampleEffectStrength;
         SampleFadeSlider.Value = _settings.SampleFade;
     }
 
     private void RefreshSampleDescriptions()
     {
-        ScreenSamplesPanel.IsVisible = _settings.ScreenSamplesEnabled ? true : false;
+        ScreenSamplesPanel.IsVisible = _settings.ScreenSamplesEnabled;
+        SampleBeatsPanel.IsVisible = _settings.SampleBlend != ScreenSampleBlend.ZoomOnly;
+        SampleStrengthPanel.IsVisible = _settings.SampleBlend is ScreenSampleBlend.Blur or ScreenSampleBlend.Pixelate;
+        SampleStrengthLabel.Text = $"Effect strength · {_settings.SampleEffectStrength}%";
         SampleBeatsLabel.Text = _settings.SampleBeats == 1 ? "New screenshot · every beat" : $"New screenshot · every {_settings.SampleBeats} beats";
         SampleOpacityLabel.Text = $"Overlay opacity · {_settings.SampleOpacity}%";
         SampleZoomLabel.Text = $"Beat zoom · {_settings.SampleZoom}%";
@@ -99,6 +102,9 @@ public partial class ControlWindow
             ScreenSampleBlend.Multiply => "Multiplies the sample with the desktop for a darker echo.",
             ScreenSampleBlend.Difference => "Shows the difference between the held sample and the live desktop.",
             ScreenSampleBlend.Negative => "Inverts the colors of the held screenshot.",
+            ScreenSampleBlend.Blur => "Softens the held screenshot. Increase effect strength for a stronger blur.",
+            ScreenSampleBlend.ZoomOnly => "Zooms the live desktop toward the center on each beat. Beat zoom sets the amount.",
+            ScreenSampleBlend.Pixelate => "Turns the held screenshot into mosaic blocks. Increase effect strength for larger blocks.",
             _ => "Layers the held screenshot over the desktop as a fading echo."
         };
         RefreshSamplePreview();
@@ -111,6 +117,7 @@ public partial class ControlWindow
             : !_settings.ScreenSamplesEnabled ? "Enable screen samples to add a beat-synced screenshot layer."
             : _overlay == null ? "Start the party and play audio to capture samples. The preview shows your primary display."
             : _settings.SampleOpacity == 0 ? "Overlay opacity is 0%. Raise it to capture and show samples."
+            : _settings.SampleBlend == ScreenSampleBlend.ZoomOnly && _settings.SampleZoom == 0 ? "Beat zoom is 0%. Raise it to show Zoom Only."
             : _overlay.ScreenSampleStatus;
     }
 }

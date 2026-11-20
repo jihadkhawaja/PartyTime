@@ -5,7 +5,7 @@ using PartyTime.Settings;
 
 namespace PartyTime.Visualization;
 
-// CPU reference/fallback and one-time negative conversion. The overlay itself uses GPU blends.
+// Match the WPF screen effects in capture pixels before the renderer scales and fades the image.
 internal static class ScreenBlendKernels
 {
     private static readonly Vector<byte> Alpha = Vector.AsVectorByte(new Vector<uint>(0xff000000u));

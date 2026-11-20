@@ -128,7 +128,7 @@ internal sealed class GpuScreenCapture : IDisposable
             _context.DrawBitmap(_sourceBitmap,
                 new RawRectF(0, 0, _width, _height),
                 1, _width == ScreenColorSampler.SampleWidth ? Vortice.Direct2D1.InterpolationMode.NearestNeighbor
-                    : Vortice.Direct2D1.InterpolationMode.HighQualityCubic, null, null);
+                    : Vortice.Direct2D1.InterpolationMode.Linear, null, null);
             _context.EndDraw().CheckError();
         }
 

@@ -4,6 +4,8 @@ PartyTime prefers GPU rendering on every desktop: ANGLE/Direct3D or OpenGL on Wi
 
 The native Windows smoke test observed both a Skia GPU context and the DXGI GPU capture backend. Linux and macOS runtime performance has not been measured on this Windows development machine.
 
+These measurements describe the November 17 optimization. To match the original WPF appearance, the current screen effects crop and blend at capture resolution off the UI thread, then use the renderer to scale and fade the finished image.
+
 ## Changes
 
 - Scene geometry is recorded into immutable Skia pictures on the UI thread and replayed by the compositor. The render thread never reads mutable scene state. Imported images share raster/texture identities across displays and the preview.

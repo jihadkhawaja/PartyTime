@@ -5,7 +5,7 @@ using Avalonia.Media.Imaging;
 namespace PartyTime.Visualization;
 
 // The worker, UI and retained draw commands must never share a mutable frame.
-// Leases keep only the newest current frame plus the held beat sample alive.
+// Leases keep a published frame alive while the overlay and preview draw it.
 internal sealed class SharedScreenBitmap(Bitmap bitmap) : IDisposable
 {
     private int _references = 1;
@@ -14,21 +14,14 @@ internal sealed class SharedScreenBitmap(Bitmap bitmap) : IDisposable
     public void Dispose() { if (Interlocked.Decrement(ref _references) == 0) Bitmap.Dispose(); }
 }
 
-internal sealed class ScreenSampleFrame : IDisposable
+internal sealed class ScreenSampleFrame(SharedScreenBitmap source) : IDisposable
 {
-    private readonly SharedScreenBitmap _held;
-    private readonly SharedScreenBitmap? _current;
+    private readonly SharedScreenBitmap _source = source.Retain();
     private int _disposed;
-    public Bitmap Held => _held.Bitmap;
-    public Bitmap? Current => _current?.Bitmap;
-    public bool Negative { get; }
-    public ScreenSampleFrame(SharedScreenBitmap held, SharedScreenBitmap? current, bool negative)
-    {
-        _held = held.Retain(); _current = current?.Retain(); Negative = negative;
-    }
+    public Bitmap Bitmap => _source.Bitmap;
+
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-        _held.Dispose(); _current?.Dispose();
+        if (Interlocked.Exchange(ref _disposed, 1) == 0) _source.Dispose();
     }
 }

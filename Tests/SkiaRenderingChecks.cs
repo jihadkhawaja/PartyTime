@@ -35,7 +35,7 @@ internal static partial class Program
         Check(BitmapPixels.Read(imageOutput).Any(b => b != 0), "Native picture renderer preserves transparent imported artwork");
 
         var random = new Random(42);
-        foreach (var blend in Enum.GetValues<ScreenSampleBlend>())
+        foreach (var blend in Enum.GetValues<ScreenSampleBlend>().Where(blend => blend <= ScreenSampleBlend.Negative))
             foreach (double zoom in new[] { 1.0, 1.04, 2.0 })
                 foreach (int width in new[] { 1, 7, 33, 960 })
                 {

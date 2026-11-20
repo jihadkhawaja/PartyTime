@@ -45,15 +45,15 @@ internal static partial class Program
         SavePng(rendered, Path.Combine(Output, "avalonia-alpha.png"));
 
         byte[] samplePixels = [58, 58, 58, 255, 80, 60, 40, 255];
-        using var sample = BitmapPixels.Create(samplePixels, 2, 1);
-        var surface = new OverlaySurface();
-        surface.ShowScene(null, true, false, sample, 0.5);
+        using var sample = new SharedScreenBitmap(BitmapPixels.Create(samplePixels, 2, 1));
+        using var surface = new OverlaySurface();
+        surface.ShowScreenSample(new ScreenSampleFrame(sample), 0.5);
         using var screen = Render(surface, 200, 100);
         pixels = BitmapPixels.Read(screen);
         int index = (50 * 200 + 50) * 4;
         Check(pixels[index + 3] is >= 126 and <= 129 && pixels[index] is >= 28 and <= 30,
             "Avalonia renders screen samples independently with premultiplied opacity");
-        surface.ShowScene(null, true, false);
+        surface.ClearScreenSample();
         using var cleared = Render(surface, 200, 100);
         Check(BitmapPixels.Read(cleared).All(value => value == 0), "Stopping samples clears the overlay to transparent");
     }
@@ -121,6 +121,18 @@ internal static partial class Program
             window.FindControl<Button>("ApplyPresetButton")!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Check(!Current(window).ShapesEnabled && Current(window).CursorTrailEnabled && Current(window).Images.SequenceEqual(settings.Images),
                 "Applying a preset updates controls and preserves image customization");
+            var effectPicker = window.FindControl<ComboBox>("SampleBlendPicker")!;
+            var strengthPanel = window.FindControl<Control>("SampleStrengthPanel")!;
+            var beatsPanel = window.FindControl<Control>("SampleBeatsPanel")!;
+            effectPicker.SelectedIndex = (int)ScreenSampleBlend.ZoomOnly;
+            Check(effectPicker.SelectedItem as string == "Zoom Only" && !beatsPanel.IsVisible && !strengthPanel.IsVisible,
+                "Zoom Only hides screenshot hold and filter strength controls");
+            effectPicker.SelectedIndex = (int)ScreenSampleBlend.Pixelate;
+            window.FindControl<Slider>("SampleStrengthSlider")!.Value = 75;
+            Check(effectPicker.SelectedItem as string == "Pixelate" && beatsPanel.IsVisible && strengthPanel.IsVisible
+                && Current(window).SampleEffectStrength == 75, "Pixelate shows hold and effect strength controls and saves the strength");
+            effectPicker.SelectedIndex = (int)ScreenSampleBlend.Blur;
+            Check(effectPicker.SelectedItem as string == "Blur" && strengthPanel.IsVisible, "The Screen tab exposes Blur with effect strength");
             window.Show();
             Dispatcher.UIThread.RunJobs();
             var tabs = window.GetVisualDescendants().OfType<TabControl>().First();

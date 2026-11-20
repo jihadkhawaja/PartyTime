@@ -30,8 +30,9 @@ internal sealed class Overlay : IDisposable
     private Display? _primaryDisplay;
     public Color[]? ScreenColors => PrimaryDisplay?.Samples?.Colors ?? PrimaryDisplay?.Colors?.Latest;
     public bool CanSampleScreen => _captureAvailable;
-    public ScreenSampleFrame? AcquirePrimarySample() => PrimaryDisplay?.Samples?.AcquireFrame(_settings.SampleBlend);
-    public ScreenSampleRequest SampleRequest => _samplePlayback.Request;
+    public ScreenSampleFrame? AcquirePrimarySample() => _settings.SampleBlend == ScreenSampleBlend.ZoomOnly && _settings.SampleZoom == 0
+        ? null : PrimaryDisplay?.Samples?.AcquireFrame(_settings.SampleBlend);
+    public double ScreenSampleZoom(long now) => _samplePlayback.Request.LiveZoom(now);
     public string ScreenSampleStatus => !_captureAvailable ? DesktopCapture.UnavailableReason
         : _displays.Select(d => d.Samples?.Error).FirstOrDefault(error => error != null)
             ?? (PrimaryDisplay?.Samples?.HasFrame != true ? "Waiting for a beat… Play audio in the selected range." : "Live sample · screenshots stay in memory.");
@@ -142,9 +143,9 @@ internal sealed class Overlay : IDisposable
                 d.Window.Surface.ShowScene(visible ? _scene : null, due, cursor);
                 d.CursorVisible = cursor;
             }
-            // Screen fades/zoom follow display animation, independently of the music FPS.
+            // Fade the finished screenshot at display cadence, independently of the music FPS.
             if (opacity > 0.005 || d.SampleVisible)
-                d.Window.Surface.ShowScreenSample(opacity > 0.005 ? d.Samples?.AcquireFrame(_settings.SampleBlend) : null, _samplePlayback.Request, now);
+                d.Window.Surface.ShowScreenSample(opacity > 0.005 ? d.Samples?.AcquireFrame(_settings.SampleBlend) : null, opacity, ScreenSampleZoom(now));
             d.SampleVisible = opacity > 0.005;
         }
     }

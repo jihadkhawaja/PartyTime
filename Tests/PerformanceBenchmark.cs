@@ -20,7 +20,7 @@ internal static partial class Program
         var held = new byte[background.Length];
         var output = new byte[background.Length];
         new Random(42).NextBytes(background); new Random(83).NextBytes(held);
-        foreach (var blend in Enum.GetValues<ScreenSampleBlend>())
+        foreach (var blend in Enum.GetValues<ScreenSampleBlend>().Where(blend => blend <= ScreenSampleBlend.Negative))
             foreach (double zoom in new[] { 1.0, 1.04 })
                 results.Add(Measure($"blend-{blend}-zoom-{zoom}", () => BeatScreenSampler.BlendPixels(background, held, output, width, height, blend, zoom), 80));
         foreach (var preset in VisualPresets.All)

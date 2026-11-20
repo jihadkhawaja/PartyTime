@@ -29,13 +29,15 @@ internal static partial class Program
         Check(!defaults.ScreenSamplesEnabled && defaults.SampleReaction == AudioReaction.Low,
             "Existing settings keep screen capture disabled with bass as its default beat source");
         var invalid = VisualizerSettings.ReadSettings("""
-            {"SampleBlend":999,"SampleReaction":999,"SampleBeats":0,"SampleOpacity":190,"SampleZoom":-4,"SampleFade":5000}
+            {"SampleBlend":999,"SampleReaction":999,"SampleBeats":0,"SampleOpacity":190,"SampleZoom":-4,"SampleFade":5000,"SampleEffectStrength":160}
             """);
         Check(invalid.SampleBlend == ScreenSampleBlend.Additive && invalid.SampleReaction == AudioReaction.Focus
-            && invalid.SampleBeats == 1 && invalid.SampleOpacity == 100 && invalid.SampleZoom == 0 && invalid.SampleFade == 2000,
+            && invalid.SampleBeats == 1 && invalid.SampleOpacity == 100 && invalid.SampleZoom == 0 && invalid.SampleFade == 2000
+            && invalid.SampleEffectStrength == 100,
             "Screen sample settings validate enums and clamp persisted limits");
         var settings = Quiet with { ScreenSamplesEnabled = true, SampleReaction = AudioReaction.Full,
-            SampleBeats = 2, SampleOpacity = 60, SampleZoom = 4, SampleFade = 700 };
+            SampleBeats = 2, SampleOpacity = 60, SampleZoom = 4, SampleFade = 700,
+            SampleBlend = ScreenSampleBlend.Blur, SampleEffectStrength = 76 };
         Check(VisualizerSettings.ReadSettings(JsonSerializer.Serialize(settings)) == settings,
             "Screen sample preferences round-trip without persisting screenshot data");
         Check(VisualPresets.All.All(preset => preset.Apply(settings).ScreenSamplesEnabled

@@ -5,7 +5,6 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using Avalonia;
 using Avalonia.Media;
-using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using PartyTime.Settings;
 
@@ -16,19 +15,23 @@ internal sealed class BeatScreenSampler : IDisposable
     private readonly Timer _timer;
     private readonly IScreenCaptureSource _capture;
     private readonly int _width, _height;
-    private readonly byte[] _pixels, _heldPixels;
-    private byte[]? _negativePixels;
+    private readonly byte[] _pixels, _heldPixels, _output;
     private readonly byte[]? _palettePixels;
     private readonly object _gate = new();
     private readonly bool _automatic;
-    private SharedScreenBitmap? _current, _held, _negative;
+    private SharedScreenBitmap? _latest;
+    private ScreenSampleBlend _latestBlend;
+    private int _latestStrength;
+    private long _latestGeneration = -1, _latestCaptureVersion = -1;
+    private double _latestZoom;
+    private byte[]? _filtered, _blurScratch;
+    private (long Generation, ScreenSampleBlend Blend, int Strength) _filterKey;
     private ScreenSampleRequest? _request;
     private Color[]? _colors;
     private string? _error;
-    private long _generation = -1, _lastPalette, _retryAfter, _lastCaptureVersion = -1;
-    private long _captureDeadline;
+    private long _generation = -1, _lastPalette, _retryAfter, _frameDeadline;
     private int _state;
-    public bool HasFrame { get { lock (_gate) return _held != null; } }
+    public bool HasFrame { get { lock (_gate) return _latest != null; } }
     public Color[]? Colors => Volatile.Read(ref _colors);
     public string? Error => Volatile.Read(ref _error) ?? _capture.Error;
 
@@ -45,7 +48,9 @@ internal sealed class BeatScreenSampler : IDisposable
     internal BeatScreenSampler(int width, int height, IScreenCaptureSource capture, bool automaticCapture = false, bool sampleColors = false)
     {
         _width = width; _height = height;
-        _pixels = new byte[_width * _height * 4]; _heldPixels = new byte[_pixels.Length];
+        _pixels = new byte[_width * _height * 4];
+        _heldPixels = new byte[_pixels.Length];
+        _output = new byte[_pixels.Length];
         _palettePixels = sampleColors ? new byte[ScreenColorSampler.SampleWidth * ScreenColorSampler.SampleHeight * 4] : null;
         _capture = capture;
         _automatic = automaticCapture;
@@ -60,71 +65,56 @@ internal sealed class BeatScreenSampler : IDisposable
         // A new beat wakes a sleeping worker immediately; fading a held sample needs no capture.
         long now = Stopwatch.GetTimestamp();
         bool wake = previous == null || previous.Generation != request.Generation || previous.BeatTimestamp != request.BeatTimestamp
-            || ScreenSampleLayer.NeedsBackground(previous.Settings.SampleBlend) != ScreenSampleLayer.NeedsBackground(request.Settings.SampleBlend)
-            || previous.Settings.SampleBlend != request.Settings.SampleBlend && request.Settings.SampleBlend == ScreenSampleBlend.Negative
+            || previous.Settings.SampleBlend != request.Settings.SampleBlend || previous.Settings.SampleZoom != request.Settings.SampleZoom
+            || FilterStrength(previous.Settings) != FilterStrength(request.Settings)
             || previous.Opacity(now) <= 0.005 && request.Opacity(now) > 0.005;
-        if (_automatic && wake && Volatile.Read(ref _state) == 0)
-            try { _timer.Change(0, Timeout.Infinite); } catch (ObjectDisposedException) { }
+        if (_automatic && wake)
+        {
+            lock (_gate)
+                if (Volatile.Read(ref _state) == 0) SetTimer(0);
+        }
     }
 
     public ScreenSampleFrame? AcquireFrame(ScreenSampleBlend blend)
     {
         lock (_gate)
         {
-            var held = blend == ScreenSampleBlend.Negative ? _negative : _held;
-            return held == null ? null : new ScreenSampleFrame(held, ScreenSampleLayer.NeedsBackground(blend) ? _current : null, blend == ScreenSampleBlend.Negative);
+            return _latest != null && _latestBlend == blend ? new ScreenSampleFrame(_latest) : null;
         }
     }
 
-    internal bool CaptureFrame()
+    internal bool CaptureFrame() => CaptureFrame(Stopwatch.GetTimestamp());
+
+    internal bool CaptureFrame(long now)
     {
         if (Interlocked.CompareExchange(ref _state, 1, 0) != 0) return false;
         bool captured = false;
         try
         {
-            long now = Stopwatch.GetTimestamp();
             if (now < _retryAfter) return false;
             var request = Volatile.Read(ref _request);
             bool visible = request?.Opacity(now) > 0.005;
-            bool newSample = visible && request!.Generation != _generation;
-            bool live = visible && ScreenSampleLayer.NeedsBackground(request!.Settings.SampleBlend);
+            bool liveZoom = request?.Settings.SampleBlend == ScreenSampleBlend.ZoomOnly;
+            bool newSample = visible && !liveZoom && request!.Generation != _generation;
+            bool live = visible && NeedsBackground(request!.Settings.SampleBlend);
             bool colorsDue = _palettePixels != null && (_lastPalette == 0 || Stopwatch.GetElapsedTime(_lastPalette, now).TotalMilliseconds >= 250);
             if (newSample || live || colorsDue)
             {
-                if (!_capture.ReadPixels(_pixels)) return false;
-                captured = true;
-                long period = FramePacing.Period(_capture.MaximumFrameRate);
-                _captureDeadline = _captureDeadline == 0 || now - _captureDeadline > Stopwatch.Frequency
-                    ? now + period : FramePacing.Advance(_captureDeadline, Math.Max(now, _captureDeadline), period);
-                if (colorsDue)
+                captured = _capture.ReadPixels(_pixels);
+                if (captured && colorsDue)
                 {
                     DownsamplePalette(_pixels, _width, _height, _palettePixels!);
                     Volatile.Write(ref _colors, ScreenColorSampler.ExtractPalette(_palettePixels!, ScreenColorSampler.SampleWidth * 4));
                     _lastPalette = now;
                 }
-                if (newSample || live && _capture.Version != _lastCaptureVersion)
+                if (captured && newSample)
                 {
-                    var next = new SharedScreenBitmap(BitmapPixels.Create(_pixels, _width, _height));
-                    lock (_gate)
-                    {
-                        var previous = _current; _current = next; previous?.Dispose();
-                        if (newSample)
-                        {
-                            previous = _held; _held = next.Retain(); previous?.Dispose();
-                            _negative?.Dispose(); _negative = null;
-                            _pixels.CopyTo(_heldPixels, 0); _generation = request!.Generation;
-                        }
-                    }
-                    _lastCaptureVersion = _capture.Version;
+                    _pixels.CopyTo(_heldPixels, 0);
+                    _generation = request!.Generation;
                 }
             }
-            if (visible && request!.Settings.SampleBlend == ScreenSampleBlend.Negative && _negative == null && _generation == request.Generation)
-            {
-                _negativePixels ??= new byte[_pixels.Length];
-                BlendPixels(_heldPixels, _heldPixels, _negativePixels, _width, _height, ScreenSampleBlend.Negative, 1);
-                var negative = new SharedScreenBitmap(BitmapPixels.Create(_negativePixels, _width, _height));
-                lock (_gate) { _negative?.Dispose(); _negative = negative; }
-            }
+            if (request != null && visible && (liveZoom || _generation == request.Generation) && (!live || captured))
+                PublishFrame(request, now, live ? _capture.Version : -1);
             Volatile.Write(ref _error, null);
             return captured;
         }
@@ -136,8 +126,66 @@ internal sealed class BeatScreenSampler : IDisposable
         }
         finally
         {
-            if (Interlocked.CompareExchange(ref _state, 0, 1) == 2) Release();
-            else Schedule();
+            lock (_gate)
+            {
+                if (Interlocked.CompareExchange(ref _state, 0, 1) == 2) Release();
+                else Schedule();
+            }
+        }
+    }
+
+    private static bool NeedsBackground(ScreenSampleBlend blend)
+        => blend is ScreenSampleBlend.Additive or ScreenSampleBlend.Screen or ScreenSampleBlend.Multiply
+            or ScreenSampleBlend.Difference or ScreenSampleBlend.ZoomOnly;
+
+    private static int FilterStrength(VisualizerSettings settings)
+        => settings.SampleBlend is ScreenSampleBlend.Blur or ScreenSampleBlend.Pixelate ? settings.SampleEffectStrength : 0;
+
+    private byte[] GetFilteredSample(ScreenSampleBlend blend, int strength)
+    {
+        var key = (_generation, blend, strength);
+        if (_filterKey == key && _filtered != null) return _filtered;
+
+        _filtered ??= new byte[_heldPixels.Length];
+        if (blend == ScreenSampleBlend.Blur)
+        {
+            _blurScratch ??= new byte[_heldPixels.Length];
+            ScreenSampleFilters.Blur(_heldPixels, _filtered, _blurScratch, _width, _height, strength);
+        }
+        else
+            ScreenSampleFilters.Pixelate(_heldPixels, _filtered, _width, _height, strength);
+
+        _filterKey = key;
+        return _filtered;
+    }
+
+    private void PublishFrame(ScreenSampleRequest request, long now, long captureVersion)
+    {
+        var blend = request.Settings.SampleBlend;
+        bool liveZoom = blend == ScreenSampleBlend.ZoomOnly;
+        int strength = FilterStrength(request.Settings);
+        // Live Zoom Only changes the texture crop in the renderer, so a static desktop needs only one upload.
+        double zoom = liveZoom ? 1 : request.Zoom(now);
+        if ((liveZoom || _latestGeneration == _generation) && _latestBlend == blend && _latestCaptureVersion == captureVersion
+            && _latestZoom == zoom && _latestStrength == strength)
+            return;
+
+        // Sample the held pixels, blend with the live desktop, then present a single opaque
+        // image. Scaling the inputs first changes clipping and cancellation at edges.
+        byte[] sample = liveZoom ? _pixels : strength > 0 ? GetFilteredSample(blend, strength) : _heldPixels;
+        var pixelBlend = strength > 0 || liveZoom ? ScreenSampleBlend.Normal : blend;
+        BlendPixels(_pixels, sample, _output, _width, _height, pixelBlend, zoom);
+        var next = new SharedScreenBitmap(BitmapPixels.Create(_output, _width, _height));
+        lock (_gate)
+        {
+            var previous = _latest;
+            _latest = next;
+            _latestBlend = blend;
+            _latestStrength = strength;
+            _latestGeneration = _generation;
+            _latestCaptureVersion = captureVersion;
+            _latestZoom = zoom;
+            previous?.Dispose();
         }
     }
 
@@ -147,12 +195,24 @@ internal sealed class BeatScreenSampler : IDisposable
         var request = Volatile.Read(ref _request);
         long now = Stopwatch.GetTimestamp();
         int delay = _palettePixels != null ? 250 : Timeout.Infinite;
-        if (_captureDeadline > 0 && _captureDeadline < now)
-            _captureDeadline = FramePacing.Advance(_captureDeadline, now, FramePacing.Period(_capture.MaximumFrameRate));
         if (request?.Opacity(now) > 0.005)
-            delay = request.Generation != _generation ? 5 : ScreenSampleLayer.NeedsBackground(request.Settings.SampleBlend)
-                ? Math.Max(1, (int)Math.Ceiling((_captureDeadline - now) * 1000.0 / Stopwatch.Frequency)) : delay;
+        {
+            if (request.Generation != _latestGeneration || request.Settings.SampleBlend != _latestBlend
+                || NeedsBackground(request.Settings.SampleBlend) || request.Settings.SampleZoom > 0 || _latestZoom != 1
+                || FilterStrength(request.Settings) != _latestStrength)
+            {
+                long period = FramePacing.Period(_capture.MaximumFrameRate);
+                if (_frameDeadline <= now)
+                    _frameDeadline = FramePacing.Advance(_frameDeadline, now, period);
+                delay = Math.Max(1, (int)Math.Ceiling((_frameDeadline - now) * 1000.0 / Stopwatch.Frequency));
+            }
+        }
         if (_retryAfter > now) delay = Math.Max(1, (int)Stopwatch.GetElapsedTime(now, _retryAfter).TotalMilliseconds);
+        SetTimer(delay);
+    }
+
+    private void SetTimer(int delay)
+    {
         try { _timer.Change(delay, Timeout.Infinite); } catch (ObjectDisposedException) { }
     }
 
@@ -193,8 +253,8 @@ internal sealed class BeatScreenSampler : IDisposable
         _capture.Dispose();
         lock (_gate)
         {
-            _current?.Dispose(); _held?.Dispose(); _negative?.Dispose();
-            _current = _held = _negative = null;
+            _latest?.Dispose();
+            _latest = null;
         }
         Volatile.Write(ref _colors, null);
     }

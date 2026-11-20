@@ -17,10 +17,29 @@ internal static partial class Program
     {
         if (!OperatingSystem.IsWindows()) throw new InvalidOperationException("Run --native-smoke on Windows; portable checks run without this flag.");
         PartyTime.Program.BuildAvaloniaApp().SetupWithoutStarting();
-        var controls = new ControlWindow(new(), persistSettings: false);
+        var controls = new ControlWindow(new())
+        {
+            Position = new PixelPoint(-30000, -30000),
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            ShowActivated = false
+        };
         var overlay = new OverlayWindow { Width = 160, Height = 90, Position = new PixelPoint(-30000, -30000) };
         try
         {
+            controls.ConfigureStartup([AppStartup.TrayArgument]);
+            controls.Show();
+            Dispatcher.UIThread.RunJobs();
+            Check(!controls.IsVisible, "Startup keeps the controls in the tray");
+            controls.OpenControls();
+            Dispatcher.UIThread.RunJobs();
+            Check(controls.IsVisible, "Opening controls from the tray after startup keeps the window visible");
+            controls.Close();
+            Check(!controls.IsVisible, "Closing the controls hides them in the tray");
+            controls.OpenControls();
+            Dispatcher.UIThread.RunJobs();
+            Check(controls.IsVisible, "Controls can reopen again after closing to the tray");
+            controls.Hide();
+
             Check(controls.Screens.All.Count > 0, "Avalonia enumerates native desktop displays");
             overlay.Show();
             Desktop.MakeClickThrough(overlay);

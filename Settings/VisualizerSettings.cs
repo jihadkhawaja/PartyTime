@@ -21,7 +21,8 @@ internal enum ImageLayout { Sticker, Halo, Scatter, ReplaceDots }
 internal enum ShapeKind { Circle, Square, Triangle, Diamond, Star, Hexagon, Heart, Cross, Pentagon, Octagon, Mixed }
 internal enum ShapeMotion { Float, Orbit, Rain, Burst, Spiral }
 internal enum CursorTrailStyle { Glow, Ribbon, Shapes }
-internal enum ScreenSampleBlend { Normal, Additive, Screen, Multiply, Difference, Negative }
+// Values are saved as numbers. Append new effects to preserve existing settings.
+internal enum ScreenSampleBlend { Normal, Additive, Screen, Multiply, Difference, Negative, Blur, ZoomOnly, Pixelate }
 
 internal sealed record OverlayImageSettings
 {
@@ -88,6 +89,7 @@ internal sealed record VisualizerSettings
     public int SampleBeats { get; init; } = 2;
     public int SampleOpacity { get; init; } = 40;
     public int SampleZoom { get; init; } = 3;
+    public int SampleEffectStrength { get; init; } = 50;
     public int SampleFade { get; init; } = 700;
 
     public FrequencyRange GetRange() => Focus switch
@@ -193,6 +195,7 @@ internal sealed record VisualizerSettings
             SampleBeats = Math.Clamp(saved.SampleBeats, 1, 8),
             SampleOpacity = Math.Clamp(saved.SampleOpacity, 0, 100),
             SampleZoom = Math.Clamp(saved.SampleZoom, 0, 12),
+            SampleEffectStrength = Math.Clamp(saved.SampleEffectStrength, 1, 100),
             SampleFade = Math.Clamp(saved.SampleFade, 150, 2000),
             Images = (saved.Images ?? []).Where(image => image != null).Take(16).Select(image => image with
             {
