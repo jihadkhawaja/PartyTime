@@ -22,7 +22,7 @@ if [[ "$runtime" == osx-* ]]; then
     exit 1
   fi
   if [[ "$runtime" == osx-arm64 ]]; then architecture=arm64; else architecture=x86_64; fi
-  lipo -verify_arch "$architecture" "$helper"
+  lipo "$helper" -verify_arch "$architecture"
   bundle="$root/artifacts/$runtime-app/PartyTime.app"
   mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources"
   cp -R "$output/." "$bundle/Contents/MacOS/"
