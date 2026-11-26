@@ -41,7 +41,8 @@ Launching PartyTime again opens the existing instance's controls. Startup launch
 
 | Tab | Controls |
 | --- | --- |
-| **Visuals** | Eight visual presets; bars and waves, circles, borders, overlay effects, size, intensity, 20 / 30 / 45 / 60 FPS, and Match display |
+| **Visuals** | Twelve visual presets; bars and waves, circles, borders, overlay effects, size, intensity, 20 / 30 / 45 / 60 FPS, and Match display |
+| **Immersion** | Spectrum Waterfall, Warp Tunnel, Stage Beams, per-display ambient lighting, and a soft vignette |
 | **Images** | PNG, JPEG, and BMP stickers, image halos, floating images, and dot / spark replacements; individual size, opacity, copies, placement, audio routing, and chroma key |
 | **Screen** | Beat-synced screenshots, blend mode, beat source, beats per screenshot, opacity, zoom, and fade time, on supported platforms |
 | **Motion** | Glow, ribbon, or shape cursor trails; ten animated shape types plus mixed shapes; float, orbit, rain, burst, and spiral motion |
@@ -54,6 +55,16 @@ Each visual layer has a **None** option. Border-only, image-only, shape-only, an
 Audio ranges are **Low** (40–250 Hz), **Mid** (250–2,000 Hz), **High** (2,000–13,000 Hz), **Full mix**, and **Follow focus**. Vocals emphasizes 300–3,400 Hz. Each layer's routing works independently of the global focus. Presets preserve imported images, audio focus, response, frame rate, and screenshot preferences.
 
 Buttons use consistent padding and clear primary, secondary, and destructive styles. Radio choices are full selection cards with a checkmark, selected styling, hover feedback, and keyboard focus indicators. Native radio grouping and keyboard interaction remain available.
+
+### Music and video immersion
+
+For YouTube or a desktop music player, start playback on your default audio output and click **Start party**. Try **Cinema glow**, **Spectrum waterfall**, **Warp tunnel**, or **Stage beams** in **Visuals**. Use **Immersion** to mix a music visual with cinema lighting and adjust their strengths individually. Turn on **Live audio** above the style preview to see how it responds to the current playback.
+
+- **Spectrum Waterfall** uses about 1.7 seconds of spectrum history to draw receding ridges behind the live spectrum.
+- **Warp Tunnel** sends rings outward. The music controls their speed, and frequency peaks bend their contours.
+- **Stage Beams** sweeps five spotlights with independent bass-to-treble responses.
+- **Ambient edge lighting** paints soft borders and colored corners. **Match each display's colors** samples four quadrants on each display, using the selected palette whenever capture is unavailable. Screen matching uses the same permissions and platform support as screen effects.
+- **Soft vignette** dims the perimeter. You can use it by itself or with ambient lighting. Both leave the middle of the video clear and fade during silence.
 
 ### Images
 
@@ -71,7 +82,7 @@ On Windows and macOS, screen colors are sampled from the primary display. In the
 
 Capture and held-screenshot effects run off the UI thread at a maximum of 960 pixels on the longer side. Windows prefers DXGI desktop duplication and GPU downscaling, with a GDI fallback. macOS uses ScreenCaptureKit with PartyTime excluded. The renderer scales and fades the finished image and handles the live crop for Zoom Only. The overlay and preview share the same images. Live desktop effects capture at up to 60 FPS on the hardware path, and an unchanged frame reuses its uploaded image. Capture permissions, protected content, and desktop restrictions can make capture unavailable. Status messages explain capture failures.
 
-Screenshots and audio stay in memory and are cleared when stopped. PartyTime does not upload them. While screen effects are active, Windows excludes the controls and overlays from screenshots and recordings to avoid feedback. For visible recordings, choose **Palette** and disable screen samples.
+Screenshots and audio stay in memory and are cleared when stopped. PartyTime does not upload them. On Windows, overlays are excluded from recordings during screen color sampling and screen effects. Screen samples and display-matched ambient lighting also exclude the controls. For visible recordings, choose **Palette**, turn off **Match each display's colors**, and disable screen samples.
 
 ### Storage and desktop behavior
 
@@ -112,7 +123,7 @@ dotnet build PartyTime.csproj -c Release
 dotnet run --project Tests/PartyTime.Tests.csproj -c Release
 ```
 
-The checks use Avalonia Headless with the real Skia renderer. They cover frequency isolation, onset detection, settings compatibility, image layouts and chroma key, the preview eyedropper, motion and monitor coordinates, cursor fading, preset behavior, screenshot timing and blends, transparent rendering, bulk editing, and settings control initialization. Rendered tabs and a preset gallery are written to `artifacts/feature-checks`.
+The checks use Avalonia Headless with the real Skia renderer. They cover frequency isolation, onset detection, settings compatibility, spectrum history, cinema lighting, live preview switching, image layouts and chroma key, motion and monitor coordinates, preset behavior, screenshot timing and blends, transparent rendering, bulk editing, and settings control initialization. Rendered tabs and a preset gallery are written to `artifacts/feature-checks`.
 
 Native audio devices, screen permissions, input pass-through, compositor behavior, and macOS signing still need testing on the target desktop. A successful cross-publish does not verify those native behaviors.
 

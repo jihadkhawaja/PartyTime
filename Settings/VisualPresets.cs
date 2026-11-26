@@ -14,7 +14,10 @@ internal sealed record VisualPreset(string Name, string Description, VisualizerS
         ShapeOpacity = Look.ShapeOpacity, ShapesReaction = Look.ShapesReaction,
         CursorTrailEnabled = Look.CursorTrailEnabled, CursorTrail = Look.CursorTrail,
         CursorShape = Look.CursorShape, CursorTrailLength = Look.CursorTrailLength,
-        CursorTrailSize = Look.CursorTrailSize, CursorReaction = Look.CursorReaction
+        CursorTrailSize = Look.CursorTrailSize, CursorReaction = Look.CursorReaction,
+        MusicEffect = Look.MusicEffect, MusicReaction = Look.MusicReaction, MusicStrength = Look.MusicStrength,
+        AmbientLighting = Look.AmbientLighting, AmbientScreenColors = Look.AmbientScreenColors,
+        CinemaVignette = Look.CinemaVignette, CinemaStrength = Look.CinemaStrength
     };
 }
 
@@ -64,6 +67,30 @@ internal static class VisualPresets
         {
             Style = VisualStyle.None, Circle = CircleStyle.None, Border = BorderStyle.None, Overlay = OverlayStyle.None,
             Theme = ColorTheme.Sunset, CursorTrailEnabled = true, CursorTrailLength = 1000, CursorTrailSize = 22
+        }),
+        new("Cinema glow", "Screen-matched edge light and a dim surround leave the video center clear.", new()
+        {
+            Style = VisualStyle.None, Border = BorderStyle.None, Overlay = OverlayStyle.None,
+            AmbientLighting = true, AmbientScreenColors = true, CinemaVignette = true,
+            Theme = ColorTheme.Aurora, Intensity = 75, CinemaStrength = 82
+        }),
+        new("Spectrum waterfall", "Recent frequencies trail away in layers above a live spectrum ridge.", new()
+        {
+            Style = VisualStyle.None, Border = BorderStyle.None, Overlay = OverlayStyle.None,
+            MusicEffect = MusicEffect.SpectrumWaterfall, MusicStrength = 100, Theme = ColorTheme.Aurora,
+            Intensity = 90, AmbientLighting = true, CinemaStrength = 36
+        }),
+        new("Warp tunnel", "Rippling octagons accelerate outward as the beat builds.", new()
+        {
+            Style = VisualStyle.None, Border = BorderStyle.None, Overlay = OverlayStyle.None,
+            MusicEffect = MusicEffect.WarpTunnel, MusicStrength = 100,
+            CinemaVignette = true, CinemaStrength = 42, Intensity = 92
+        }),
+        new("Stage beams", "Five frequency-driven spotlights sweep up from the bottom of the display.", new()
+        {
+            Style = VisualStyle.None, Border = BorderStyle.None, Overlay = OverlayStyle.None,
+            MusicEffect = MusicEffect.StageBeams, MusicStrength = 100,
+            Theme = ColorTheme.Sunset, Intensity = 92, Size = 115
         })
     ];
 }

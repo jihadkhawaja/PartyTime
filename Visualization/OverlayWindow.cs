@@ -56,11 +56,12 @@ internal sealed class OverlaySurface : Panel, IDisposable
         Children.Add(_base);
         Children.Add(_cursor);
     }
-    public void ShowScene(Scene? scene, bool redrawBase = true, bool drawCursor = true)
+    public void ShowScene(Scene? scene, bool redrawBase = true, bool drawCursor = true, Color[]? ambientColors = null)
     {
         if (redrawBase)
         {
             bool visible = scene?.BaseVisible == true;
+            _base.AmbientColors = ambientColors;
             if (visible || _baseVisible) { _base.Scene = scene; _base.InvalidateVisual(); }
             _baseVisible = visible;
         }
@@ -83,6 +84,7 @@ internal sealed class OverlaySurface : Panel, IDisposable
     {
         private SkiaSceneRenderer? _renderer;
         public Scene? Scene;
+        public Color[]? AmbientColors;
         public Point DesktopOrigin;
         public double Scaling = 1;
         public override void Render(DrawingContext context)
@@ -93,7 +95,7 @@ internal sealed class OverlaySurface : Panel, IDisposable
                 return;
             }
             _renderer ??= new SkiaSceneRenderer();
-            var picture = _renderer.Record(Scene, Bounds.Width, Bounds.Height, cursor, DesktopOrigin, Scaling);
+            var picture = _renderer.Record(Scene, Bounds.Width, Bounds.Height, cursor, DesktopOrigin, Scaling, ambientColors: AmbientColors);
             context.Custom(new ScenePictureOperation(new Rect(Bounds.Size), picture));
         }
         public void Dispose() { _renderer?.Dispose(); _renderer = null; }

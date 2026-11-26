@@ -37,7 +37,7 @@ internal static partial class Program
         var random = new Random(42);
         foreach (var blend in Enum.GetValues<ScreenSampleBlend>().Where(blend => blend <= ScreenSampleBlend.Negative))
             foreach (double zoom in new[] { 1.0, 1.04, 2.0 })
-                foreach (int width in new[] { 1, 7, 33, 960 })
+                foreach (int width in new[] { 1, 7, 33, 960, 2101 })
                 {
                     const int height = 5;
                     var bg = new byte[width * height * 4]; var sample = new byte[bg.Length]; var output = new byte[bg.Length];

@@ -66,8 +66,10 @@
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
                 <DockPanel Margin="1,0,1,7">
-                    <TextBlock DockPanel.Dock="Right" Text="Sample motion" Foreground="{StaticResource Muted}" FontSize="11"/>
-                    <TextBlock Text="STYLE PREVIEW" Classes="Eyebrow"/>
+                    <CheckBox x:Name="PreviewLiveToggle" DockPanel.Dock="Right" Content="Live audio" FontSize="11" MinHeight="0"
+                              Padding="0" IsEnabled="False" IsCheckedChanged="PreviewLiveChanged"
+                              ToolTip.Tip="Use system playback in the preview while the party is on."/>
+                    <TextBlock Text="STYLE PREVIEW" Classes="Eyebrow" VerticalAlignment="Center"/>
                 </DockPanel>
                 <controls:StylePreview Grid.Row="1" x:Name="Preview" IsHitTestVisible="False"/>
             </Grid>
@@ -165,6 +167,56 @@
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
+            <TabItem Header="Immersion">
+                <ScrollViewer Classes="SettingsScroll">
+                    <StackPanel Spacing="8">
+                        <Border Padding="13,10" CornerRadius="10" BorderThickness="1"
+                                BorderBrush="{StaticResource PanelBorder}" Background="{StaticResource Panel}">
+                            <StackPanel Spacing="5">
+                                <TextBlock Text="MUSIC VISUAL" Classes="Eyebrow"/>
+                                <ComboBox x:Name="MusicEffectPicker" Classes="Selection" MinHeight="34" Margin="0" SelectionChanged="SettingsChanged"
+                                          AutomationProperties.Name="Music visual"/>
+                                <StackPanel x:Name="MusicEffectControls" Spacing="5">
+                                    <TextBlock x:Name="MusicEffectDescription" Classes="HelpText"/>
+                                    <Grid ColumnDefinitions="*,16,*">
+                                        <StackPanel>
+                                            <TextBlock Text="React to"/>
+                                            <ComboBox x:Name="MusicReactionPicker" Classes="Selection" MinHeight="34" Margin="0,2,0,0" SelectionChanged="SettingsChanged"
+                                                      AutomationProperties.Name="Music visual audio range"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2">
+                                            <TextBlock x:Name="MusicStrengthLabel"/>
+                                            <Slider x:Name="MusicStrengthSlider" Minimum="0" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True"
+                                                    ValueChanged="SettingsChanged" AutomationProperties.Name="Music visual strength"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                        <Border Padding="13,10" CornerRadius="10" BorderThickness="1"
+                                BorderBrush="{StaticResource PanelBorder}" Background="{StaticResource Panel}">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="CINEMA LIGHTING" Classes="Eyebrow"/>
+                                <TextBlock Text="Light or dim the edges around a video. Both effects leave the center clear." Classes="HelpText"/>
+                                <WrapPanel>
+                                    <CheckBox x:Name="AmbientLightingToggle" Content="Ambient edge lighting" MinHeight="29"
+                                              IsCheckedChanged="SettingsChanged" Margin="0,0,15,0"/>
+                                    <CheckBox x:Name="CinemaVignetteToggle" Content="Soft vignette" MinHeight="29" IsCheckedChanged="SettingsChanged"/>
+                                </WrapPanel>
+                                <StackPanel x:Name="AmbientColorControls" Spacing="2">
+                                    <CheckBox x:Name="AmbientScreenColorsToggle" Content="Match each display's colors" MinHeight="29" IsCheckedChanged="SettingsChanged"/>
+                                    <TextBlock x:Name="AmbientColorStatus" Classes="HelpText"/>
+                                </StackPanel>
+                                <StackPanel x:Name="CinemaStrengthControls">
+                                    <TextBlock x:Name="CinemaStrengthLabel"/>
+                                    <Slider x:Name="CinemaStrengthSlider" Minimum="0" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True"
+                                            ValueChanged="SettingsChanged" AutomationProperties.Name="Cinema lighting strength"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
             <TabItem Header="Images">
                 <ScrollViewer Classes="SettingsScroll">
                     <StackPanel>
@@ -232,7 +284,7 @@
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
-            <TabItem Header="Screen">
+            <TabItem x:Name="ScreenTab" Header="Screen">
                 <ScrollViewer Classes="SettingsScroll">
                     <StackPanel>
                         <TextBlock Text="BEAT-SYNCED SCREEN SAMPLES" Classes="Eyebrow" Margin="0,0,0,7"/>

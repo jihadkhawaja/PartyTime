@@ -29,6 +29,7 @@ internal sealed class Overlay : IDisposable
     private Display? PrimaryDisplay => _primaryDisplay;
     private Display? _primaryDisplay;
     public Color[]? ScreenColors => PrimaryDisplay?.Samples?.Colors ?? PrimaryDisplay?.Colors?.Latest;
+    public Color[]? AmbientScreenColors => PrimaryDisplay?.Ambient.Colors;
     public bool CanSampleScreen => _captureAvailable;
     public ScreenSampleFrame? AcquirePrimarySample() => _settings.SampleBlend == ScreenSampleBlend.ZoomOnly && _settings.SampleZoom == 0
         ? null : PrimaryDisplay?.Samples?.AcquireFrame(_settings.SampleBlend);
@@ -48,7 +49,8 @@ internal sealed class Overlay : IDisposable
     public void ApplySettings(VisualizerSettings settings)
     {
         static bool ColorsEnabled(VisualizerSettings value) => value.ColorSource == ColorSource.Screen || value.ColorSource == ColorSource.Mix && value.ScreenBlend > 0;
-        bool recapture = ColorsEnabled(settings) != ColorsEnabled(_settings) || settings.ScreenSamplesEnabled != _settings.ScreenSamplesEnabled;
+        bool recapture = ColorsEnabled(settings) != ColorsEnabled(_settings) || settings.ScreenSamplesEnabled != _settings.ScreenSamplesEnabled
+            || settings.UsesAmbientScreenColors != _settings.UsesAmbientScreenColors;
         bool pacing = settings.FrameRate != _settings.FrameRate || settings.CursorTrailEnabled != _settings.CursorTrailEnabled;
         _settings = settings;
         _scene.ApplySettings(settings);
@@ -61,19 +63,20 @@ internal sealed class Overlay : IDisposable
     private void ConfigureSampler()
     {
         bool colors = _settings.ColorSource == ColorSource.Screen || (_settings.ColorSource == ColorSource.Mix && _settings.ScreenBlend > 0);
-        bool capture = colors || _settings.ScreenSamplesEnabled;
+        bool capture = colors || _settings.ScreenSamplesEnabled || _settings.UsesAmbientScreenColors;
         _captureAvailable = DesktopCapture.IsSupported;
         foreach (var d in _displays) _captureAvailable &= d.Window.SetCaptureExcluded(capture);
         foreach (var d in _displays)
         {
             d.Window.Surface.ShowScene(null);
             d.Window.Surface.ClearScreenSample();
+            d.Ambient.Update(null, 0);
             d.Colors?.Dispose(); d.Colors = null;
             d.Samples?.Dispose(); d.Samples = null;
             if (!_captureAvailable || !capture) continue;
-            bool primaryColors = colors && ReferenceEquals(d, PrimaryDisplay);
-            if (_settings.ScreenSamplesEnabled) d.Samples = new BeatScreenSampler(d.Screen, sampleColors: primaryColors);
-            else if (primaryColors) d.Colors = new ScreenColorSampler(d.Screen);
+            bool sampleColors = _settings.UsesAmbientScreenColors || (colors && ReferenceEquals(d, PrimaryDisplay));
+            if (_settings.ScreenSamplesEnabled) d.Samples = new BeatScreenSampler(d.Screen, sampleColors: sampleColors);
+            else if (sampleColors) d.Colors = new ScreenColorSampler(d.Screen);
         }
     }
 
@@ -127,25 +130,31 @@ internal sealed class Overlay : IDisposable
         double elapsed = _lastRender != 0 ? Math.Min(Stopwatch.GetElapsedTime(_lastRender, now).TotalSeconds, 0.2) : 1.0 / 30;
         _lastRender = now;
         _scene.UpdatePointer(_settings.CursorTrailEnabled ? Desktop.GetPointer() : null, now);
-        bool visible = _scene.Update(_audio.Latest, now, elapsed, ScreenColors);
-        _samplePlayback.Update(_audio.Latest, now);
+        var audio = _audio.Latest;
+        bool visible = _scene.Update(audio, now, elapsed, ScreenColors);
+        _samplePlayback.Update(audio, now);
+        var sampleRequest = _samplePlayback.Request;
+        double sampleOpacity = sampleRequest.Opacity(now);
+        double sampleZoom = sampleOpacity > 0.005 ? sampleRequest.LiveZoom(now) : 1;
         foreach (var d in _displays)
         {
-            d.Samples?.Update(_samplePlayback.Request);
+            if (_settings.UsesAmbientScreenColors)
+                d.Ambient.Update(d.Samples?.Colors ?? d.Colors?.Latest, elapsed);
+            d.Samples?.Update(sampleRequest);
             bool due = now + tolerance >= d.NextFrame;
             bool cursorDue = _settings.CursorTrailEnabled && now + tolerance >= d.NextCursorFrame;
             bool cursor = visible && _scene.CursorIntersects(new Rect(d.Screen.Bounds.X, d.Screen.Bounds.Y, d.Screen.Bounds.Width, d.Screen.Bounds.Height), d.Screen.Scaling);
-            double opacity = d.Samples?.HasFrame == true ? _samplePlayback.Request.Opacity(now) : 0;
+            double opacity = sampleOpacity > 0 && d.Samples?.HasFrame == true ? sampleOpacity : 0;
             if (due) d.NextFrame = FramePacing.Advance(d.NextFrame, Math.Max(now, d.NextFrame), _scene.BaseVisible || opacity > 0 ? d.FramePeriod : IdleInterval);
             if (cursorDue) d.NextCursorFrame = FramePacing.Advance(d.NextCursorFrame, Math.Max(now, d.NextCursorFrame), d.CursorPeriod);
             if (due || cursorDue && (cursor || d.CursorVisible) || !_settings.CursorTrailEnabled && d.CursorVisible)
             {
-                d.Window.Surface.ShowScene(visible ? _scene : null, due, cursor);
+                d.Window.Surface.ShowScene(visible ? _scene : null, due, cursor, d.Ambient.Colors);
                 d.CursorVisible = cursor;
             }
             // Fade the finished screenshot at display cadence, independently of the music FPS.
             if (opacity > 0.005 || d.SampleVisible)
-                d.Window.Surface.ShowScreenSample(opacity > 0.005 ? d.Samples?.AcquireFrame(_settings.SampleBlend) : null, opacity, ScreenSampleZoom(now));
+                d.Window.Surface.ShowScreenSample(opacity > 0.005 ? d.Samples?.AcquireFrame(_settings.SampleBlend) : null, opacity, sampleZoom);
             d.SampleVisible = opacity > 0.005;
         }
     }
@@ -163,6 +172,7 @@ internal sealed class Overlay : IDisposable
         public Screen Screen { get; } = screen;
         public long FramePeriod, CursorPeriod, NextFrame, NextCursorFrame;
         public double RefreshRate;
+        public AmbientColorTransition Ambient { get; } = new();
         public bool CursorVisible, SampleVisible;
         public BeatScreenSampler? Samples;
         public ScreenColorSampler? Colors;

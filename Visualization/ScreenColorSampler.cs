@@ -13,6 +13,7 @@ internal sealed class ScreenColorSampler : IDisposable
     private readonly DesktopCapture _capture;
     private readonly byte[] _pixels = new byte[SampleWidth * SampleHeight * 4];
     private Color[]? _latest;
+    private long _paletteVersion = -1;
     private int _state;
     public ScreenColorSampler(Screen screen)
     {
@@ -23,8 +24,24 @@ internal sealed class ScreenColorSampler : IDisposable
     private void Sample()
     {
         if (Interlocked.CompareExchange(ref _state, 1, 0) != 0) return;
-        try { if (_capture.ReadPixels(_pixels)) Volatile.Write(ref _latest, ExtractPalette(_pixels, SampleWidth * 4)); }
-        catch (Exception ex) when (ex is ExternalException or InvalidOperationException or System.IO.IOException) { Volatile.Write(ref _latest, null); }
+        try
+        {
+            if (!_capture.ReadPixels(_pixels, retainPreviousPixels: true))
+            {
+                _paletteVersion = -1;
+                Volatile.Write(ref _latest, null);
+            }
+            else if (_capture.Version != _paletteVersion)
+            {
+                Volatile.Write(ref _latest, ExtractPalette(_pixels, SampleWidth * 4));
+                _paletteVersion = _capture.Version;
+            }
+        }
+        catch (Exception ex) when (ex is ExternalException or InvalidOperationException or System.IO.IOException)
+        {
+            _paletteVersion = -1;
+            Volatile.Write(ref _latest, null);
+        }
         finally { if (Interlocked.CompareExchange(ref _state, 0, 1) == 2) _capture.Dispose(); }
     }
     public void Dispose() { _timer.Dispose(); if (Interlocked.Exchange(ref _state, 2) == 0) _capture.Dispose(); }

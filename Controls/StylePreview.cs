@@ -17,11 +17,12 @@ public sealed class StylePreview : Control
     private static readonly IBrush MockWindow = new SolidColorBrush(Color.FromRgb(39, 37, 63));
     private static readonly IBrush MockContent = new SolidColorBrush(Color.FromRgb(58, 54, 82));
 
-    private readonly Scene _scene = new();
+    private Scene _scene = new();
     private CompositionClock? _clock;
     private long _lastUpdate, _nextFrame;
     private readonly long _start = Stopwatch.GetTimestamp();
-    private FrequencyRange _range = FrequencyRange.Full;
+    private VisualizerSettings _settings = new();
+    private Func<AudioFrame>? _getLiveAudio;
     private bool _showScene;
     private Window? _owner;
     private SkiaSceneRenderer? _renderer;
@@ -68,19 +69,43 @@ public sealed class StylePreview : Control
     }
 
     internal Func<Color[]?>? GetScreenColors { get; set; }
+    internal Func<Color[]?>? GetAmbientColors { get; set; }
 
     internal void ApplySettings(VisualizerSettings settings)
     {
+        _settings = settings;
         _scene.ApplySettings(settings);
-        _range = settings.GetRange();
         UpdatePreview();
+    }
+
+    internal void SetLiveAudio(Func<AudioFrame>? source)
+    {
+        bool modeChanged = (_getLiveAudio == null) != (source == null);
+        _getLiveAudio = source;
+        if (!modeChanged)
+            return;
+
+        _scene = new Scene();
+        _lastUpdate = 0;
+        ApplySettings(_settings);
     }
 
     private void UpdatePreview()
     {
-        const double beatLength = 0.54;
         long now = Stopwatch.GetTimestamp();
         double seconds = Stopwatch.GetElapsedTime(_start, now).TotalSeconds;
+        var frame = _getLiveAudio?.Invoke() ?? SampleFrame(now, seconds);
+        _scene.UpdatePointer(Bounds.Width > 0 && Bounds.Height > 0
+            ? new Point(Bounds.Width * (0.5 + Math.Sin(seconds * 1.7) * 0.32), Bounds.Height * (0.5 + Math.Cos(seconds * 2.3) * 0.28))
+            : null, now);
+        _showScene = _scene.Update(frame, now, _lastUpdate == 0 ? 1.0 / 60 : Math.Min(0.2, Stopwatch.GetElapsedTime(_lastUpdate, now).TotalSeconds), GetScreenColors?.Invoke());
+        _lastUpdate = now;
+        InvalidateVisual();
+    }
+
+    private AudioFrame SampleFrame(long now, double seconds)
+    {
+        const double beatLength = 0.54;
         double beat = Math.Floor(seconds / beatLength) * beatLength;
         long beatTime = _start + (long)(beat * Stopwatch.Frequency);
         double hit = Math.Exp(-(seconds - beat) * 12);
@@ -95,14 +120,8 @@ public sealed class StylePreview : Control
             return new AudioSignal((float)(0.52 + hit * 0.21), (float)(0.24 + hit * 0.62),
                 bands, beatTime, 0.72f, range);
         }
-        var frame = new AudioFrame(now, Sample(_range), Sample(FrequencyRange.Full),
+        return new AudioFrame(now, Sample(_settings.GetRange()), Sample(FrequencyRange.Full),
             Sample(FrequencyRange.Bass), Sample(FrequencyRange.Mids), Sample(FrequencyRange.Treble));
-        _scene.UpdatePointer(Bounds.Width > 0 && Bounds.Height > 0
-            ? new Point(Bounds.Width * (0.5 + Math.Sin(seconds * 1.7) * 0.32), Bounds.Height * (0.5 + Math.Cos(seconds * 2.3) * 0.28))
-            : null, now);
-        _showScene = _scene.Update(frame, now, _lastUpdate == 0 ? 1.0 / 60 : Math.Min(0.2, Stopwatch.GetElapsedTime(_lastUpdate, now).TotalSeconds), GetScreenColors?.Invoke());
-        _lastUpdate = now;
-        InvalidateVisual();
     }
 
     public override void Render(DrawingContext drawing)
@@ -122,7 +141,8 @@ public sealed class StylePreview : Control
         if (_showScene)
         {
             _renderer ??= new SkiaSceneRenderer();
-            drawing.Custom(new ScenePictureOperation(new Rect(Bounds.Size), _renderer.Record(_scene, width, height, includeCursor: true)));
+            drawing.Custom(new ScenePictureOperation(new Rect(Bounds.Size),
+                _renderer.Record(_scene, width, height, includeCursor: true, ambientColors: GetAmbientColors?.Invoke())));
         }
     }
 }

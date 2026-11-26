@@ -82,19 +82,37 @@ internal static partial class Program
             Check(sampler.AcquireFrame(ScreenSampleBlend.Normal) == null && BitmapPixels.Read(retained.Bitmap)[0] == 10,
                 "Stopping releases worker ownership without invalidating retained render frames");
         }
+
+        using (var source = new FakeCapture())
+        using (var sampler = new BeatScreenSampler(8, 4, source, sampleColors: true))
+        {
+            long step = Stopwatch.Frequency / 2;
+            sampler.CaptureFrame(now);
+            var colors = sampler.Colors;
+            source.Frozen = true;
+            sampler.CaptureFrame(now + step);
+            Check(colors != null && ReferenceEquals(sampler.Colors, colors), "Unchanged desktop frames reuse the extracted color palette");
+            source.Available = false;
+            sampler.CaptureFrame(now + step * 2);
+            source.Available = true;
+            Check(sampler.Colors == null && sampler.CaptureFrame(now + step * 3) && sampler.Colors != null,
+                "Palette sampling recovers after an unavailable frame with the same capture version");
+        }
     }
 
     private sealed class FakeCapture : IScreenCaptureSource
     {
         public int Reads;
         public bool Frozen;
+        public bool Available = true;
         public byte[]? Pattern;
         public string? Error => null;
         public long Version { get; private set; }
         public int MaximumFrameRate => 60;
-        public bool ReadPixels(byte[] destination)
+        public bool ReadPixels(byte[] destination, bool retainPreviousPixels = false)
         {
             Reads++;
+            if (!Available) return false;
             if (!Frozen) Version++;
             for (int i = 0; i < destination.Length; i += 4)
             {

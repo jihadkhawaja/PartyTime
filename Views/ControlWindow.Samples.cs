@@ -18,7 +18,7 @@ public partial class ControlWindow
 
     private void UpdateSampleCaptureExclusion()
     {
-        bool exclude = _settings.ScreenSamplesEnabled && _overlay != null;
+        bool exclude = (_settings.ScreenSamplesEnabled || _settings.UsesAmbientScreenColors) && _overlay != null;
         if (exclude != _sampleControlsExcluded
             && Interop.Desktop.SetCaptureExcluded(this, exclude))
             _sampleControlsExcluded = exclude;
@@ -53,7 +53,7 @@ public partial class ControlWindow
     private void UpdateSamplePreviewTimer()
     {
         if (_samplePreviewTimer == null) return;
-        if (IsVisible && WindowState != WindowState.Minimized && SettingsTabs.SelectedIndex == 2)
+        if (IsVisible && WindowState != WindowState.Minimized && SettingsTabs.SelectedItem == ScreenTab)
         {
             _samplePreviewTimer.Start();
             if (_overlay != null && _settings.ScreenSamplesEnabled) _samplePreviewClock ??= new CompositionClock(this, RenderSamplePreview);
@@ -70,7 +70,7 @@ public partial class ControlWindow
     }
     private void RenderSamplePreview()
     {
-        SetSamplePreview(IsVisible && WindowState != WindowState.Minimized && SettingsTabs.SelectedIndex == 2 && SamplePreviewHost.IsEffectivelyVisible && _settings.ScreenSamplesEnabled ? _overlay?.AcquirePrimarySample() : null);
+        SetSamplePreview(IsVisible && WindowState != WindowState.Minimized && SettingsTabs.SelectedItem == ScreenTab && SamplePreviewHost.IsEffectivelyVisible && _settings.ScreenSamplesEnabled ? _overlay?.AcquirePrimarySample() : null);
     }
 
     private void RestoreSampleControls()

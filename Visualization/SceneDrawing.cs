@@ -17,10 +17,13 @@ internal interface ISceneDrawing
     void DrawEllipse(IBrush? brush, IPen? pen, Point center, double radius);
     void DrawLine(IPen pen, Point start, Point end);
     void DrawPolygon(ReadOnlySpan<Point> points, IBrush? brush, IPen? pen);
+    void DrawOutlinedPolygon(ReadOnlySpan<Point> points, Color halo, double haloThickness, Color stroke, double thickness);
     void DrawSymbol(ShapeKind shape, Point center, double radius, double rotation, Color color, double opacity, bool filled);
     void DrawGlow(Point center, double radius, Color color, double opacity);
     void DrawColoredLine(Point start, Point end, Color color, double opacity, double thickness);
     void DrawCurve(Point start, ReadOnlySpan<(Point Control, Point End)> segments, IPen halo, IPen stroke);
+    void DrawHorizontalGradientCurve(Point start, ReadOnlySpan<(Point Control, Point End)> segments,
+        Color first, Color second, double thickness, Color halo, double haloThickness);
 }
 
 internal sealed class AvaloniaSceneDrawing(DrawingContext drawing) : ISceneDrawing
@@ -67,15 +70,29 @@ internal sealed class AvaloniaSceneDrawing(DrawingContext drawing) : ISceneDrawi
     {
         if (points.Length < 3)
             return;
+        drawing.DrawGeometry(brush, pen, CreatePolygon(points, filled: brush != null));
+    }
+
+    public void DrawOutlinedPolygon(ReadOnlySpan<Point> points, Color halo, double haloThickness, Color stroke, double thickness)
+    {
+        if (points.Length < 3)
+            return;
+        var geometry = CreatePolygon(points, filled: false);
+        drawing.DrawGeometry(null, new ImmutablePen(new ImmutableSolidColorBrush(halo), haloThickness), geometry);
+        drawing.DrawGeometry(null, new ImmutablePen(new ImmutableSolidColorBrush(stroke), thickness), geometry);
+    }
+
+    private static StreamGeometry CreatePolygon(ReadOnlySpan<Point> points, bool filled)
+    {
         var geometry = new StreamGeometry();
         using (var path = geometry.Open())
         {
-            path.BeginFigure(points[0], brush != null);
+            path.BeginFigure(points[0], filled);
             for (int i = 1; i < points.Length; i++)
                 path.LineTo(points[i]);
             path.EndFigure(true);
         }
-        drawing.DrawGeometry(brush, pen, geometry);
+        return geometry;
     }
 
     public void DrawCurve(Point start, ReadOnlySpan<(Point Control, Point End)> segments, IPen halo, IPen stroke)
@@ -91,4 +108,9 @@ internal sealed class AvaloniaSceneDrawing(DrawingContext drawing) : ISceneDrawi
         drawing.DrawGeometry(null, halo, geometry);
         drawing.DrawGeometry(null, stroke, geometry);
     }
+
+    public void DrawHorizontalGradientCurve(Point start, ReadOnlySpan<(Point Control, Point End)> segments,
+        Color first, Color second, double thickness, Color halo, double haloThickness)
+        => DrawCurve(start, segments, new ImmutablePen(new ImmutableSolidColorBrush(halo), haloThickness),
+            new ImmutablePen(SceneBrush.Linear(first, second, new Point(0, 0), new Point(1, 0)), thickness));
 }

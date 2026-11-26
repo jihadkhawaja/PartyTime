@@ -33,6 +33,7 @@ internal sealed class DesktopCapture : IScreenCaptureSource
     private bool _tryGpu = true;
     private long _version;
     private long _receivedVersion;
+    private byte[]? _reusableDestination;
     private readonly int _requestedFrameRate;
     public long Version => Volatile.Read(ref _version);
     public int MaximumFrameRate => Math.Min(_requestedFrameRate, OperatingSystem.IsWindows() && _gpu == null ? 30 : 60);
@@ -47,11 +48,17 @@ internal sealed class DesktopCapture : IScreenCaptureSource
         _displayId = (ulong)(screen.TryGetPlatformHandle()?.Handle.ToInt64() ?? 0);
     }
 
-    public bool ReadPixels(byte[] destination)
+    public bool ReadPixels(byte[] destination, bool retainPreviousPixels = false)
     {
+        bool previousPixelsValid = retainPreviousPixels && ReferenceEquals(destination, _reusableDestination);
+        _reusableDestination = null;
         if (OperatingSystem.IsWindows())
         {
-            if (ReadGpu(destination)) return true;
+            if (ReadGpu(destination, previousPixelsValid))
+            {
+                if (retainPreviousPixels) _reusableDestination = destination;
+                return true;
+            }
             EnsureWindowsCapture();
             if (!StretchBlt(_memoryDc, 0, 0, _width, _height, _screenDc, _bounds.X, _bounds.Y, _bounds.Width, _bounds.Height, 0x00CC0020))
                 throw new InvalidOperationException("Desktop capture is unavailable.");
@@ -79,8 +86,10 @@ internal sealed class DesktopCapture : IScreenCaptureSource
         lock (_macGate)
         {
             if (_latest == null) return false;
-            _latest.CopyTo(destination, 0);
+            if (!previousPixelsValid || _receivedVersion != _version)
+                _latest.CopyTo(destination, 0);
             Volatile.Write(ref _version, _receivedVersion);
+            if (retainPreviousPixels) _reusableDestination = destination;
         }
         return true;
     }
@@ -116,7 +125,7 @@ internal sealed class DesktopCapture : IScreenCaptureSource
     }
 
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
-    private bool ReadGpu(byte[] destination)
+    private bool ReadGpu(byte[] destination, bool previousPixelsValid)
     {
         try
         {
@@ -125,7 +134,7 @@ internal sealed class DesktopCapture : IScreenCaptureSource
                 _gpu = GpuScreenCapture.Open(_bounds, _width, _height);
                 _tryGpu = _gpu != null;
             }
-            if (_gpu == null || !_gpu.TryReadPixels(destination)) return false;
+            if (_gpu == null || !_gpu.TryReadPixels(destination, previousPixelsValid)) return false;
             if (_gpu.Changed) Interlocked.Increment(ref _version);
             return true;
         }
@@ -169,6 +178,7 @@ internal sealed class DesktopCapture : IScreenCaptureSource
         if (_memoryDc != IntPtr.Zero) DeleteDC(_memoryDc);
         if (_screenDc != IntPtr.Zero) ReleaseDC(IntPtr.Zero, _screenDc);
         _bitmap = _memoryDc = _screenDc = _previousBitmap = _pixels = IntPtr.Zero;
+        _reusableDestination = null;
         lock (_macGate) _latest = null;
     }
 
