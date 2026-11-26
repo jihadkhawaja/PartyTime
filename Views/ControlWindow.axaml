@@ -66,8 +66,8 @@
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
                 <DockPanel Margin="1,0,1,7">
-                    <CheckBox x:Name="PreviewLiveToggle" DockPanel.Dock="Right" Content="Live audio" FontSize="11" MinHeight="0"
-                              Padding="0" IsEnabled="False" IsCheckedChanged="PreviewLiveChanged"
+                    <CheckBox x:Name="PreviewLiveToggle" DockPanel.Dock="Right" Content="Live preview" FontSize="11" MinHeight="0"
+                              Padding="8,4,4,4" IsEnabled="False" IsCheckedChanged="PreviewLiveChanged"
                               ToolTip.Tip="Use system playback in the preview while the party is on."/>
                     <TextBlock Text="STYLE PREVIEW" Classes="Eyebrow" VerticalAlignment="Center"/>
                 </DockPanel>

@@ -58,7 +58,7 @@ Buttons use consistent padding and clear primary, secondary, and destructive sty
 
 ### Music and video immersion
 
-For YouTube or a desktop music player, start playback on your default audio output and click **Start party**. Try **Cinema glow**, **Spectrum waterfall**, **Warp tunnel**, or **Stage beams** in **Visuals**. Use **Immersion** to mix a music visual with cinema lighting and adjust their strengths individually. Turn on **Live audio** above the style preview to see how it responds to the current playback.
+For YouTube or a desktop music player, start playback on your default audio output and click **Start party**. Try **Cinema glow**, **Spectrum waterfall**, **Warp tunnel**, or **Stage beams** in **Visuals**. Use **Immersion** to mix a music visual with cinema lighting and adjust their strengths individually. Turn on **Live preview** above the style preview to see how it responds to the current playback.
 
 - **Spectrum Waterfall** uses about 1.7 seconds of spectrum history to draw receding ridges behind the live spectrum.
 - **Warp Tunnel** sends rings outward. The music controls their speed, and frequency peaks bend their contours.
