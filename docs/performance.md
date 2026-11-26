@@ -58,3 +58,24 @@ dotnet run --project Tests/PartyTime.Tests.csproj -c Release -- --benchmark-capt
 ```
 
 The portable benchmark writes `artifacts/benchmarks/performance-<label>.json`. Capture comparison writes `artifacts/benchmarks/capture-performance.json`. Reference measurements from this change are preserved in [before.json](benchmarks/before.json), [after.json](benchmarks/after.json), and [capture.json](benchmarks/capture.json). No screenshots or audio are stored by these benchmarks.
+
+## Immersion optimizations
+
+Zoomed screenshot blends keep the original crop and pixel math. AVX2 gathers source pixels directly into vector lanes. Other SIMD-capable systems reuse a resampled row, and a scalar path covers systems without SIMD. Capture workers reuse pixels and palettes when the capture backend reports the same frame.
+
+Audio analysis keeps the 2,048-sample stereo FFT and 512-sample hop. It computes the same onset state at every hop and only allocates an output frame for the final hop in each packet. The FFT uses double-precision SIMD when available, skips transforms for entirely silent windows, and shares complete frequency-band peaks across ranges. Scene recording reuses gradient buffers and path geometry. Scene smoothing calculates its band coefficients once per update.
+
+These are local Windows x64 component timings. Each result is the median of three alternating baseline and optimized run means. Blends use a 960×540 BGRA frame at 1.04× zoom. Scene recording uses 1920×1080 and a full waterfall history. The runs use the same timing and visual settings and measure CPU work for each listed operation.
+
+| Operation | Before (ms) | After (ms) | Managed bytes before → after |
+| --- | ---: | ---: | ---: |
+| Zoomed Additive blend | 7.167 | 0.242 | 8 → 8 |
+| Zoomed Difference blend | 6.999 | 0.219 | 8 → 8 |
+| Zoomed Screen blend | 2.047 | 0.447 | 8 → 8 |
+| Zoomed Multiply blend | 2.020 | 0.349 | 8 → 8 |
+| Analyze 25 ms of stereo audio | 0.156 | 0.098 | 2,595 → 1,112 |
+| Analyze 25 ms of silence | 0.171 | 0.027 | 2,595 → 1,112 |
+| Record Spectrum Waterfall | 0.074 | 0.052 | 14,616 → 5,160 |
+| Record Warp Tunnel | 0.029 | 0.012 | 4,784 → 1,584 |
+
+Managed allocation figures include 8 bytes per iteration for timing storage. Validation compared all twelve preset renders byte for byte and compared band levels, reaction values, and onsets against the previous analyzer across 3,312 frames. The blend checks compare every channel against the scalar crop and formula, including nonaligned widths and pooled scratch buffers.

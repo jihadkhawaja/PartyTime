@@ -21,15 +21,18 @@ internal sealed class SkiaSceneRenderer : ISceneDrawing, IDisposable
     private readonly SKPath _path = new();
     private readonly Dictionary<Bitmap, SKImage> _images = new();
     private readonly List<Bitmap> _unusedImages = new();
+    private readonly (SKColor[] Colors, float[] Positions)[] _gradientBuffers = new (SKColor[], float[])[5];
+    private readonly SKColor[] _glowColors = new SKColor[2];
     private static readonly float[] GlowStops = [0, 1];
     private static readonly SKPath[] Symbols = CreateSymbols();
     private SKCanvas _canvas = null!;
 
-    public SKPicture Record(Scene scene, double width, double height, bool cursorOnly = false, Point origin = default, double scaling = 1, bool includeCursor = false)
+    public SKPicture Record(Scene scene, double width, double height, bool cursorOnly = false, Point origin = default,
+        double scaling = 1, bool includeCursor = false, Color[]? ambientColors = null)
     {
         _canvas = _recorder.BeginRecording(new SKRect(0, 0, (float)width, (float)height));
         if (cursorOnly) scene.DrawCursor(this, width, height, origin, scaling, scaling);
-        else scene.DrawBase(this, width, height);
+        else scene.DrawBase(this, width, height, ambientColors);
         if (includeCursor && !cursorOnly) scene.DrawCursor(this, width, height, origin, scaling, scaling);
         return _recorder.EndRecording();
     }
@@ -85,8 +88,10 @@ internal sealed class SkiaSceneRenderer : ISceneDrawing, IDisposable
     }
     public void DrawGlow(Point center, double radius, Color color, double opacity)
     {
+        _glowColors[0] = Color(color, opacity * 0.45);
+        _glowColors[1] = Color(color, 0);
         using var shader = SKShader.CreateRadialGradient(new SKPoint((float)center.X, (float)center.Y), (float)(radius * 1.7),
-            [Color(color, opacity * 0.45), Color(color, 0)], GlowStops, SKShaderTileMode.Clamp);
+            _glowColors, GlowStops, SKShaderTileMode.Clamp);
         _fill.Shader = shader; _fill.Color = SKColors.White;
         _canvas.DrawCircle((float)center.X, (float)center.Y, (float)(radius * 1.7), _fill);
         _fill.Shader = null;
@@ -111,23 +116,94 @@ internal sealed class SkiaSceneRenderer : ISceneDrawing, IDisposable
     public void DrawPolygon(ReadOnlySpan<Point> points, IBrush? brush, IPen? pen)
     {
         if (points.Length < 3) return;
-        _path.Reset(); _path.MoveTo((float)points[0].X, (float)points[0].Y);
-        for (int i = 1; i < points.Length; i++) _path.LineTo((float)points[i].X, (float)points[i].Y);
-        _path.Close(); DrawPath(brush, pen);
+        SetPolygon(points);
+        var bounds = GetPathBrushBounds(brush, pen?.Brush);
+        if (brush != null)
+        {
+            using var shader = SetBrush(_fill, brush, bounds);
+            _canvas.DrawPath(_path, _fill);
+        }
+        if (pen != null) DrawPathStroke(pen, bounds);
+    }
+    public void DrawOutlinedPolygon(ReadOnlySpan<Point> points, Color halo, double haloThickness, Color stroke, double thickness)
+    {
+        if (points.Length < 3) return;
+        SetPolygon(points);
+        _stroke.Shader = null;
+        SetDefaultStroke(haloThickness);
+        _stroke.Color = ToSkiaColor(halo);
+        _canvas.DrawPath(_path, _stroke);
+        _stroke.StrokeWidth = (float)thickness;
+        _stroke.Color = ToSkiaColor(stroke);
+        _canvas.DrawPath(_path, _stroke);
+    }
+    private void SetPolygon(ReadOnlySpan<Point> points)
+    {
+        Span<SKPoint> vertices = points.Length <= 32 ? stackalloc SKPoint[points.Length] : new SKPoint[points.Length];
+        for (int i = 0; i < points.Length; i++)
+            vertices[i] = new SKPoint((float)points[i].X, (float)points[i].Y);
+        _path.Rewind();
+        _path.AddPoly(vertices, close: true);
     }
     public void DrawCurve(Point start, ReadOnlySpan<(Point Control, Point End)> segments, IPen halo, IPen stroke)
     {
-        _path.Reset(); _path.MoveTo((float)start.X, (float)start.Y);
-        foreach (var segment in segments) _path.QuadTo((float)segment.Control.X, (float)segment.Control.Y, (float)segment.End.X, (float)segment.End.Y);
-        DrawPath(null, halo); DrawPath(null, stroke);
+        SetCurve(start, segments);
+        var bounds = GetPathBrushBounds(halo.Brush, stroke.Brush);
+        DrawPathStroke(halo, bounds);
+        DrawPathStroke(stroke, bounds);
     }
 
-    private void DrawPath(IBrush? brush, IPen? pen)
+    public void DrawHorizontalGradientCurve(Point start, ReadOnlySpan<(Point Control, Point End)> segments,
+        Color first, Color second, double thickness, Color halo, double haloThickness)
     {
+        SetCurve(start, segments);
+        _stroke.Shader = null;
+        SetDefaultStroke(haloThickness);
+        _stroke.Color = ToSkiaColor(halo);
+        _canvas.DrawPath(_path, _stroke);
+
+        var bounds = _path.TightBounds;
+        var (colors, positions) = GradientBuffers(2);
+        colors[0] = ToSkiaColor(first);
+        colors[1] = ToSkiaColor(second);
+        positions[0] = 0;
+        positions[1] = 1;
+        float endX = (float)((double)bounds.Left + bounds.Width);
+        using var shader = SKShader.CreateLinearGradient(new SKPoint(bounds.Left, bounds.Top),
+            new SKPoint(endX, bounds.Top), colors, positions, SKShaderTileMode.Clamp);
+        _stroke.StrokeWidth = (float)thickness;
+        _stroke.Color = SKColors.White;
+        _stroke.Shader = shader;
+        _canvas.DrawPath(_path, _stroke);
+    }
+
+    private void SetCurve(Point start, ReadOnlySpan<(Point Control, Point End)> segments)
+    {
+        _path.Rewind();
+        _path.MoveTo((float)start.X, (float)start.Y);
+        foreach (var segment in segments)
+            _path.QuadTo((float)segment.Control.X, (float)segment.Control.Y, (float)segment.End.X, (float)segment.End.Y);
+    }
+
+    private void SetDefaultStroke(double thickness)
+    {
+        _stroke.StrokeCap = SKStrokeCap.Butt;
+        _stroke.StrokeJoin = SKStrokeJoin.Miter;
+        _stroke.StrokeMiter = 10;
+        _stroke.StrokeWidth = (float)thickness;
+    }
+
+    private Rect GetPathBrushBounds(IBrush? first, IBrush? second)
+    {
+        if (first is not IGradientBrush && second is not IGradientBrush)
+            return default;
         var r = _path.TightBounds;
-        var bounds = new Rect(r.Left, r.Top, r.Width, r.Height);
-        if (brush != null) { using var shader = SetBrush(_fill, brush, bounds); _canvas.DrawPath(_path, _fill); }
-        if (pen != null) { using var shader = SetPen(pen, bounds); _canvas.DrawPath(_path, _stroke); }
+        return new Rect(r.Left, r.Top, r.Width, r.Height);
+    }
+    private void DrawPathStroke(IPen pen, Rect bounds)
+    {
+        using var shader = SetPen(pen, bounds);
+        _canvas.DrawPath(_path, _stroke);
     }
     private SKShader? SetPen(IPen pen, Rect bounds)
     {
@@ -137,13 +213,23 @@ internal sealed class SkiaSceneRenderer : ISceneDrawing, IDisposable
         _stroke.StrokeMiter = (float)pen.MiterLimit;
         return SetBrush(_stroke, pen.Brush!, bounds);
     }
-    private static SKShader? SetBrush(SKPaint paint, IBrush brush, Rect bounds)
+    private SKShader? SetBrush(SKPaint paint, IBrush brush, Rect bounds)
     {
-        paint.Shader = null;
-        if (brush is ISolidColorBrush solid) { paint.Color = Color(solid.Color, solid.Opacity * solid.Color.A / 255.0); return null; }
+        if (brush is ISolidColorBrush solid)
+        {
+            paint.Shader = null;
+            paint.Color = Color(solid.Color, solid.Opacity * solid.Color.A / 255.0);
+            return null;
+        }
         var gradient = (IGradientBrush)brush;
-        var colors = new SKColor[gradient.GradientStops.Count]; var positions = new float[colors.Length];
-        for (int i = 0; i < colors.Length; i++) { var stop = gradient.GradientStops[i]; colors[i] = Color(stop.Color, stop.Color.A / 255.0); positions[i] = (float)stop.Offset; }
+        var stops = gradient.GradientStops;
+        var (colors, positions) = GradientBuffers(stops.Count);
+        for (int i = 0; i < colors.Length; i++)
+        {
+            var stop = stops[i];
+            colors[i] = ToSkiaColor(stop.Color);
+            positions[i] = (float)stop.Offset;
+        }
         SKPoint Point(RelativePoint relative) { var p = relative.ToPixels(bounds.Size); return new SKPoint((float)(bounds.X + p.X), (float)(bounds.Y + p.Y)); }
         SKShader shader;
         if (brush is ILinearGradientBrush linear) shader = SKShader.CreateLinearGradient(Point(linear.StartPoint), Point(linear.EndPoint), colors, positions, SKShaderTileMode.Clamp);
@@ -156,7 +242,18 @@ internal sealed class SkiaSceneRenderer : ISceneDrawing, IDisposable
         return shader;
     }
 
+    private (SKColor[] Colors, float[] Positions) GradientBuffers(int count)
+    {
+        if (count >= _gradientBuffers.Length)
+            return (new SKColor[count], new float[count]);
+        ref var buffers = ref _gradientBuffers[count];
+        if (buffers.Colors == null)
+            buffers = (new SKColor[count], new float[count]);
+        return buffers;
+    }
+
     private static SKRect Rect(Rect rect) => new((float)rect.X, (float)rect.Y, (float)rect.Right, (float)rect.Bottom);
+    private static SKColor ToSkiaColor(Color color) => new(color.R, color.G, color.B, color.A);
     private static SKColor Color(Color color, double opacity) => new(color.R, color.G, color.B, Alpha(opacity));
     private static byte Alpha(double opacity) => (byte)Math.Clamp(Math.Round(opacity * 255), 0, 255);
     private static SKPath[] CreateSymbols()

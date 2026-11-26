@@ -17,7 +17,8 @@ internal sealed record ScreenSampleRequest(VisualizerSettings Settings, long Bea
             || Settings.SampleBlend == ScreenSampleBlend.ZoomOnly && Settings.SampleZoom == 0) return 0;
         double age = Math.Max(0, Stopwatch.GetElapsedTime(BeatTimestamp, now).TotalSeconds);
         double fade = Math.Clamp(1 - age / (Settings.SampleFade / 1000.0), 0, 1);
-        return Settings.SampleOpacity / 100.0 * fade * (0.65 + 0.35 * Pulse(now));
+        if (fade == 0) return 0;
+        return Settings.SampleOpacity / 100.0 * fade * (0.65 + 0.35 * Math.Exp(-age / 0.16));
     }
 }
 

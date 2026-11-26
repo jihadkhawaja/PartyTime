@@ -39,11 +39,14 @@ internal sealed partial class Scene
 
     public void ApplySettings(VisualizerSettings settings)
     {
+        var range = settings.GetRange();
+        if (settings.MusicEffect != _settings.MusicEffect || settings.MusicReaction != _settings.MusicReaction
+            || (range != _range && settings.MusicReaction == AudioReaction.Focus))
+            ResetSpectrumHistory();
         _settings = settings;
         if (!settings.CursorTrailEnabled)
             ClearCursorTrail();
         ApplyImages(settings.Images);
-        var range = settings.GetRange();
         if (range != _range)
         {
             _range = range;
@@ -66,18 +69,27 @@ internal sealed partial class Scene
     {
         double response = _settings.Response / 100.0;
         bool fresh = audio.Timestamp != 0 && Stopwatch.GetElapsedTime(audio.Timestamp, now).TotalSeconds < 0.14;
+        double bandAttack = 1 - Math.Exp(-elapsed / 0.045);
+        double bandRelease = 1 - Math.Exp(-elapsed / 0.14);
         bool beat = false;
         for (int i = 0; i < _reactions.Length; i++)
         {
             var signal = i switch { 0 => audio.Focused, 1 => audio.Full, 2 => audio.Low, 3 => audio.Mid, _ => audio.High };
-            beat |= _reactions[i].Update(signal, now, elapsed, response,
+            beat |= _reactions[i].Update(signal, now, elapsed, response, bandAttack, bandRelease,
                 fresh && (i != (int)AudioReaction.Focus || signal.Range == _range)) && i == (int)AudioReaction.Full;
         }
         SelectReaction(AudioReaction.Full);
         if (beat)
             _phase += 0.17 + _beatStrength * 0.14;
         _phase = (_phase + elapsed * (0.18 + _level * 0.45)) % 4;
-        BaseVisible = Intensity > 0 && ((_settings.Style != VisualStyle.None && _reactions[(int)_settings.BarsReaction].Visible)
+        var music = _reactions[(int)_settings.MusicReaction];
+        if (_settings.MusicEffect == MusicEffect.SpectrumWaterfall)
+            UpdateSpectrumHistory(music, elapsed);
+        if (_settings.MusicEffect == MusicEffect.WarpTunnel)
+            _tunnelTravel = (_tunnelTravel + elapsed * (0.6 + music.Drive * 2.4 + music.Pulse * 2.0)) % TunnelRingCount;
+        BaseVisible = Intensity > 0 && ((MusicLayerEnabled && music.Visible)
+            || (CinemaLayerEnabled && _reactions[(int)AudioReaction.Full].Visible)
+            || (_settings.Style != VisualStyle.None && _reactions[(int)_settings.BarsReaction].Visible)
             || (_settings.Circle != CircleStyle.None && _reactions[(int)_settings.CircleReaction].Visible)
             || (_settings.Border != BorderStyle.None && _reactions[(int)_settings.BorderReaction].Visible)
             || (_settings.Overlay != OverlayStyle.None && _reactions[(int)_settings.EffectsReaction].Visible)
@@ -127,25 +139,30 @@ internal sealed partial class Scene
         DrawCursor(drawing, width, height, desktopOrigin, dpiX, dpiY);
     }
 
-    public void DrawBase(ISceneDrawing drawing, double width, double height)
+    public void DrawBase(ISceneDrawing drawing, double width, double height, Color[]? ambientColors = null)
     {
         double shortSide = Math.Min(width, height);
         if (shortSide <= 0)
             return;
         drawing.SetImages(_imageSources);
 
+        if (CinemaLayerEnabled && SelectReaction(AudioReaction.Full))
+            DrawCinema(drawing, width, height, shortSide, ambientColors);
+        if (MusicLayerEnabled && SelectReaction(_settings.MusicReaction))
+            DrawMusicLayer(drawing, width, height, shortSide);
+
         var center = new Point(width / 2, height / 2);
-        if (SelectReaction(_settings.EffectsReaction))
+        if (_settings.Overlay != OverlayStyle.None && SelectReaction(_settings.EffectsReaction))
         {
             double depth = shortSide * Size * (0.045 + _drive * 0.067 + _pulse * 0.047);
             DrawOverlay(drawing, width, height, shortSide, depth);
         }
-        if (SelectReaction(_settings.BorderReaction))
+        if (_settings.Border != BorderStyle.None && SelectReaction(_settings.BorderReaction))
         {
             double depth = shortSide * Size * (0.045 + _drive * 0.067 + _pulse * 0.047);
             DrawBorder(drawing, width, height, shortSide, depth);
         }
-        if (SelectReaction(_settings.BarsReaction))
+        if (_settings.Style != VisualStyle.None && SelectReaction(_settings.BarsReaction))
         {
             double depth = shortSide * Size * (0.045 + _drive * 0.067 + _pulse * 0.047);
             switch (_settings.Style)
@@ -162,7 +179,7 @@ internal sealed partial class Scene
                     break;
             }
         }
-        if (SelectReaction(_settings.CircleReaction))
+        if (_settings.Circle != CircleStyle.None && SelectReaction(_settings.CircleReaction))
             DrawCircle(drawing, center, shortSide * Size);
         DrawShapes(drawing, width, height, shortSide);
         DrawImages(drawing, width, height, shortSide);
@@ -194,13 +211,16 @@ internal sealed partial class Scene
         private long _beatTimestamp;
         public bool Visible => Math.Max(Level, Pulse) >= 0.014;
 
-        public bool Update(AudioSignal audio, long now, double elapsed, double response, bool fresh)
+        public bool Update(AudioSignal audio, long now, double elapsed, double response, double bandAttack, double bandRelease, bool fresh)
         {
             Level = Follow(Level, fresh ? Math.Min(1, audio.Level * response) : 0, elapsed, 0.035, 0.18);
             Drive = Follow(Drive, fresh ? Math.Min(1, audio.Drive * response) : 0, elapsed, 0.025, 0.15);
             for (int i = 0; i < Bands.Length; i++)
-                Bands[i] = (float)Follow(Bands[i], fresh ? Math.Min(1, audio.Bands[i] * response) : 0,
-                    elapsed, 0.045, 0.14);
+            {
+                double current = Bands[i];
+                double target = fresh ? Math.Min(1, audio.Bands[i] * response) : 0;
+                Bands[i] = (float)(current + (target - current) * (target > current ? bandAttack : bandRelease));
+            }
             bool beat = fresh && audio.BeatTimestamp != 0 && audio.BeatTimestamp != _beatTimestamp;
             if (beat)
             {

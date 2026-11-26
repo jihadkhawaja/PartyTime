@@ -45,6 +45,7 @@ public partial class ControlWindow : Window
         InitializeCustomizationControls();
         InitializeMotionControls();
         InitializeSampleControls();
+        InitializeImmersionControls();
         RestoreControls();
         RefreshDescriptions();
         ApplySettings();
@@ -169,6 +170,7 @@ public partial class ControlWindow : Window
         try
         {
             _overlay = new Overlay(_audio, this);
+            UpdateSampleCaptureExclusion();
             _overlay.ApplySettings(_settings);
             StatusTitle.Text = "Party is on";
             StatusDot.Fill = Brushes.MediumSpringGreen;
@@ -176,7 +178,8 @@ public partial class ControlWindow : Window
             _trayToggle.Header = "Stop party";
             _tray.ToolTipText = "PartyTime · On";
             _audio.Start();
-            UpdateSampleCaptureExclusion();
+            RefreshPreviewMode();
+            RefreshAmbientColorStatus();
             RefreshColorSource();
             UpdateSamplePreviewTimer();
         }
@@ -190,6 +193,8 @@ public partial class ControlWindow : Window
         _overlay = null;
         UpdateSampleCaptureExclusion();
         _audio.Stop();
+        RefreshPreviewMode();
+        RefreshAmbientColorStatus();
         StatusTitle.Text = "Party is off";
         StatusDetail.Text = detail;
         ToolTip.SetTip(StatusDetail, detail);
@@ -233,6 +238,7 @@ public partial class ControlWindow : Window
         EffectsReaction.SelectedIndex = (int)_settings.EffectsReaction;
         RestoreMotionControls();
         RestoreSampleControls();
+        RestoreImmersionControls();
         RefreshImageList();
     }
 
@@ -287,6 +293,13 @@ public partial class ControlWindow : Window
             SampleZoom = (int)SampleZoomSlider.Value,
             SampleEffectStrength = (int)SampleStrengthSlider.Value,
             SampleFade = (int)SampleFadeSlider.Value,
+            MusicEffect = (MusicEffect)MusicEffectPicker.SelectedIndex,
+            MusicReaction = (AudioReaction)MusicReactionPicker.SelectedIndex,
+            MusicStrength = (int)MusicStrengthSlider.Value,
+            AmbientLighting = AmbientLightingToggle.IsChecked == true,
+            AmbientScreenColors = AmbientScreenColorsToggle.IsChecked == true,
+            CinemaVignette = CinemaVignetteToggle.IsChecked == true,
+            CinemaStrength = (int)CinemaStrengthSlider.Value,
             FrameRate = ReadChoice<OverlayFrameRate>(FrameRateChoices),
             Intensity = (int)IntensitySlider.Value,
             Size = (int)SizeSlider.Value,
@@ -315,6 +328,7 @@ public partial class ControlWindow : Window
     {
         RefreshMotionDescriptions();
         RefreshSampleDescriptions();
+        RefreshImmersionDescriptions();
         IntensityValue.Text = $"{_settings.Intensity}%";
         SizeValue.Text = $"{_settings.Size}%";
         ResponseValue.Text = $"{_settings.Response}%";
@@ -345,10 +359,11 @@ public partial class ControlWindow : Window
     {
         _audio.Focus = _settings.GetRange();
         SetSamplePreview(null);
-        _overlay?.ApplySettings(_settings);
         UpdateSampleCaptureExclusion();
+        _overlay?.ApplySettings(_settings);
         Preview.ApplySettings(_settings);
         RefreshColorSource();
+        RefreshAmbientColorStatus();
         UpdateSamplePreviewTimer();
     }
 
@@ -397,7 +412,7 @@ public partial class ControlWindow : Window
     private void OnDisplaysChanged(object? sender, EventArgs e)
     {
         if (_exiting || _overlay == null) return;
-        try { _overlay.RebuildScreens(); RefreshColorSource(); }
+        try { _overlay.RebuildScreens(); RefreshColorSource(); RefreshAmbientColorStatus(); }
         catch (Exception ex) { Debug.WriteLine(ex); StopParty("The display layout changed. Start the party again."); }
     }
 }

@@ -21,6 +21,7 @@ internal enum ImageLayout { Sticker, Halo, Scatter, ReplaceDots }
 internal enum ShapeKind { Circle, Square, Triangle, Diamond, Star, Hexagon, Heart, Cross, Pentagon, Octagon, Mixed }
 internal enum ShapeMotion { Float, Orbit, Rain, Burst, Spiral }
 internal enum CursorTrailStyle { Glow, Ribbon, Shapes }
+internal enum MusicEffect { None, SpectrumWaterfall, WarpTunnel, StageBeams }
 // Values are saved as numbers. Append new effects to preserve existing settings.
 internal enum ScreenSampleBlend { Normal, Additive, Screen, Multiply, Difference, Negative, Blur, ZoomOnly, Pixelate }
 
@@ -91,6 +92,15 @@ internal sealed record VisualizerSettings
     public int SampleZoom { get; init; } = 3;
     public int SampleEffectStrength { get; init; } = 50;
     public int SampleFade { get; init; } = 700;
+    public MusicEffect MusicEffect { get; init; }
+    public AudioReaction MusicReaction { get; init; } = AudioReaction.Full;
+    public int MusicStrength { get; init; } = 70;
+    public bool AmbientLighting { get; init; }
+    public bool AmbientScreenColors { get; init; }
+    public bool CinemaVignette { get; init; }
+    public int CinemaStrength { get; init; } = 55;
+
+    internal bool UsesAmbientScreenColors => AmbientLighting && AmbientScreenColors;
 
     public FrequencyRange GetRange() => Focus switch
     {
@@ -197,6 +207,10 @@ internal sealed record VisualizerSettings
             SampleZoom = Math.Clamp(saved.SampleZoom, 0, 12),
             SampleEffectStrength = Math.Clamp(saved.SampleEffectStrength, 1, 100),
             SampleFade = Math.Clamp(saved.SampleFade, 150, 2000),
+            MusicEffect = Enum.IsDefined(saved.MusicEffect) ? saved.MusicEffect : defaults.MusicEffect,
+            MusicReaction = Enum.IsDefined(saved.MusicReaction) ? saved.MusicReaction : defaults.MusicReaction,
+            MusicStrength = Math.Clamp(saved.MusicStrength, 0, 100),
+            CinemaStrength = Math.Clamp(saved.CinemaStrength, 0, 100),
             Images = (saved.Images ?? []).Where(image => image != null).Take(16).Select(image => image with
             {
                 Id = Guid.TryParseExact(image.Id, "N", out _) ? image.Id : Guid.NewGuid().ToString("N"),

@@ -29,7 +29,7 @@ internal sealed class BeatScreenSampler : IDisposable
     private ScreenSampleRequest? _request;
     private Color[]? _colors;
     private string? _error;
-    private long _generation = -1, _lastPalette, _retryAfter, _frameDeadline;
+    private long _generation = -1, _lastPalette, _paletteVersion = -1, _retryAfter, _frameDeadline;
     private int _state;
     public bool HasFrame { get { lock (_gate) return _latest != null; } }
     public Color[]? Colors => Volatile.Read(ref _colors);
@@ -100,11 +100,20 @@ internal sealed class BeatScreenSampler : IDisposable
             bool colorsDue = _palettePixels != null && (_lastPalette == 0 || Stopwatch.GetElapsedTime(_lastPalette, now).TotalMilliseconds >= 250);
             if (newSample || live || colorsDue)
             {
-                captured = _capture.ReadPixels(_pixels);
-                if (captured && colorsDue)
+                captured = _capture.ReadPixels(_pixels, retainPreviousPixels: true);
+                if (colorsDue)
                 {
-                    DownsamplePalette(_pixels, _width, _height, _palettePixels!);
-                    Volatile.Write(ref _colors, ScreenColorSampler.ExtractPalette(_palettePixels!, ScreenColorSampler.SampleWidth * 4));
+                    if (!captured)
+                    {
+                        _paletteVersion = -1;
+                        Volatile.Write(ref _colors, null);
+                    }
+                    else if (_capture.Version != _paletteVersion)
+                    {
+                        DownsamplePalette(_pixels, _width, _height, _palettePixels!);
+                        Volatile.Write(ref _colors, ScreenColorSampler.ExtractPalette(_palettePixels!, ScreenColorSampler.SampleWidth * 4));
+                        _paletteVersion = _capture.Version;
+                    }
                     _lastPalette = now;
                 }
                 if (captured && newSample)
@@ -120,6 +129,8 @@ internal sealed class BeatScreenSampler : IDisposable
         }
         catch (Exception ex) when (ex is ExternalException or InvalidOperationException or System.IO.IOException or ArgumentException)
         {
+            _paletteVersion = -1;
+            Volatile.Write(ref _colors, null);
             Volatile.Write(ref _error, ex.Message);
             _retryAfter = Stopwatch.GetTimestamp() + Stopwatch.Frequency;
             return false;

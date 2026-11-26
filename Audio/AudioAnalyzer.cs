@@ -14,12 +14,15 @@ internal sealed class AudioAnalyzer
 
     private static readonly double[] Hann = new double[FftSize];
     private static readonly int[] BitReversed = new int[FftSize];
-    private static readonly Complex[] Roots = new Complex[FftSize / 2];
+    private static readonly double[] RootReal = new double[FftSize];
+    private static readonly double[] RootImaginary = new double[FftSize];
     private static readonly int[] BandEdges = new int[BandCount + 1];
 
     private readonly Complex[] _samples = new Complex[FftSize];
-    private readonly Complex[] _spectrum = new Complex[FftSize];
+    private readonly double[] _spectrumReal = new double[FftSize];
+    private readonly double[] _spectrumImaginary = new double[FftSize];
     private readonly double[] _magnitudes = new double[BandEdges[^1]];
+    private readonly (double Magnitude, double Weighted)[] _fullBandPeaks = new (double, double)[BandCount];
     private int _position;
     private int _samplesUntilAnalysis = FftSize;
     private long _lastPacket;
@@ -52,8 +55,17 @@ internal sealed class AudioAnalyzer
             BitReversed[i] = reversed;
         }
 
-        for (int i = 0; i < Roots.Length; i++)
-            Roots[i] = Complex.FromPolarCoordinates(1, -2 * Math.PI * i / FftSize);
+        // Store the roots for each butterfly stage contiguously so SIMD can load adjacent lanes.
+        for (int half = 1; half < FftSize; half *= 2)
+        {
+            int step = FftSize / (half * 2);
+            for (int j = 0; j < half; j++)
+            {
+                var root = Complex.FromPolarCoordinates(1, -2 * Math.PI * (j * step) / FftSize);
+                RootReal[half + j] = root.Real;
+                RootImaginary[half + j] = root.Imaginary;
+            }
+        }
 
         for (int i = 0; i <= BandCount; i++)
         {
@@ -102,70 +114,115 @@ internal sealed class AudioAnalyzer
             _position = (_position + 1) & (FftSize - 1);
             if (--_samplesUntilAnalysis == 0)
             {
-                frame = Analyze(now);
+                // Intermediate hops update the onset detector. Only the final hop leaves this packet.
+                bool publish = (samples.Length - i) / 2 <= Hop;
+                frame = Analyze(now, publish);
                 _samplesUntilAnalysis = Hop;
             }
         }
         return frame;
     }
 
-    private AudioFrame Analyze(long now)
+    private AudioFrame? Analyze(long now, bool publish)
     {
         double energy = 0;
         for (int i = 0; i < FftSize; i++)
         {
             Complex sample = _samples[(_position + i) & (FftSize - 1)];
             energy += (sample.Real * sample.Real + sample.Imaginary * sample.Imaginary) * 0.5;
-            _spectrum[BitReversed[i]] = sample * Hann[i];
+            int index = BitReversed[i];
+            _spectrumReal[index] = sample.Real * Hann[i];
+            _spectrumImaginary[index] = sample.Imaginary * Hann[i];
         }
 
-        for (int size = 2; size <= FftSize; size *= 2)
+        if (energy == 0)
+            Array.Clear(_magnitudes);
+        else
         {
-            int half = size / 2;
-            int rootStep = FftSize / size;
-            for (int start = 0; start < FftSize; start += size)
+            TransformSpectrum();
+            for (int i = 1; i < _magnitudes.Length; i++)
             {
-                for (int j = 0; j < half; j++)
-                {
-                    var even = _spectrum[start + j];
-                    var odd = _spectrum[start + j + half] * Roots[j * rootStep];
-                    _spectrum[start + j] = even + odd;
-                    _spectrum[start + j + half] = even - odd;
-                }
+                // The two mirrored bins contain the combined power of the packed left and right channels.
+                double real = _spectrumReal[i], imaginary = _spectrumImaginary[i];
+                int mirror = FftSize - i;
+                double mirroredReal = _spectrumReal[mirror], mirroredImaginary = _spectrumImaginary[mirror];
+                double power = real * real + imaginary * imaginary + mirroredReal * mirroredReal + mirroredImaginary * mirroredImaginary;
+                _magnitudes[i] = Math.Sqrt(power) * (2.0 / FftSize);
             }
         }
 
-        for (int i = 1; i < _magnitudes.Length; i++)
-        {
-            // The two mirrored bins contain the combined power of the packed left and right channels.
-            Complex positive = _spectrum[i];
-            Complex negative = _spectrum[FftSize - i];
-            double power = positive.Real * positive.Real + positive.Imaginary * positive.Imaginary
-                + negative.Real * negative.Real + negative.Imaginary * negative.Imaginary;
-            _magnitudes[i] = Math.Sqrt(power) * (2.0 / FftSize);
-        }
-
-        var full = AnalyzeSignal(now, FrequencyRange.Full, _full, energy);
-        return new AudioFrame(now,
-            _range == FrequencyRange.Full ? full : AnalyzeSignal(now, _range, _focused, energy), full,
-            AnalyzeSignal(now, FrequencyRange.Bass, _low, energy),
-            AnalyzeSignal(now, FrequencyRange.Mids, _mid, energy),
-            AnalyzeSignal(now, FrequencyRange.Treble, _high, energy));
+        var full = AnalyzeSignal(now, FrequencyRange.Full, _full, energy, publish);
+        var focused = _range == FrequencyRange.Full ? full : AnalyzeSignal(now, _range, _focused, energy, publish);
+        var low = AnalyzeSignal(now, FrequencyRange.Bass, _low, energy, publish);
+        var mid = AnalyzeSignal(now, FrequencyRange.Mids, _mid, energy, publish);
+        var high = AnalyzeSignal(now, FrequencyRange.Treble, _high, energy, publish);
+        return publish ? new AudioFrame(now, focused!, full!, low!, mid!, high!) : null;
     }
 
-    private AudioSignal AnalyzeSignal(long now, FrequencyRange range, SignalHistory history, double energy)
+    private void TransformSpectrum()
+    {
+        for (int size = 2; size <= FftSize; size *= 2)
+        {
+            int half = size / 2;
+            for (int start = 0; start < FftSize; start += size)
+            {
+                int j = 0;
+                if (Vector.IsHardwareAccelerated)
+                {
+                    for (; j <= half - Vector<double>.Count; j += Vector<double>.Count)
+                    {
+                        int upper = start + j, lower = upper + half, root = half + j;
+                        var real = new Vector<double>(_spectrumReal, upper);
+                        var imaginary = new Vector<double>(_spectrumImaginary, upper);
+                        var otherReal = new Vector<double>(_spectrumReal, lower);
+                        var otherImaginary = new Vector<double>(_spectrumImaginary, lower);
+                        var rootReal = new Vector<double>(RootReal, root);
+                        var rootImaginary = new Vector<double>(RootImaginary, root);
+                        var rotatedReal = otherReal * rootReal - otherImaginary * rootImaginary;
+                        var rotatedImaginary = otherImaginary * rootReal + otherReal * rootImaginary;
+                        (real + rotatedReal).CopyTo(_spectrumReal, upper);
+                        (imaginary + rotatedImaginary).CopyTo(_spectrumImaginary, upper);
+                        (real - rotatedReal).CopyTo(_spectrumReal, lower);
+                        (imaginary - rotatedImaginary).CopyTo(_spectrumImaginary, lower);
+                    }
+                }
+                for (; j < half; j++)
+                {
+                    int upper = start + j, lower = upper + half, root = half + j;
+                    double real = _spectrumReal[upper], imaginary = _spectrumImaginary[upper];
+                    double otherReal = _spectrumReal[lower], otherImaginary = _spectrumImaginary[lower];
+                    double rotatedReal = otherReal * RootReal[root] - otherImaginary * RootImaginary[root];
+                    double rotatedImaginary = otherImaginary * RootReal[root] + otherReal * RootImaginary[root];
+                    _spectrumReal[upper] = real + rotatedReal;
+                    _spectrumImaginary[upper] = imaginary + rotatedImaginary;
+                    _spectrumReal[lower] = real - rotatedReal;
+                    _spectrumImaginary[lower] = imaginary - rotatedImaginary;
+                }
+            }
+        }
+    }
+
+    private AudioSignal? AnalyzeSignal(long now, FrequencyRange range, SignalHistory history, double energy, bool publish)
     {
         int firstBin = FirstBin(range);
         int endBin = EndBin(range);
         bool full = range == FrequencyRange.Full;
         double drive = 0;
         double focusedEnergy = 0;
-        for (int i = firstBin; i < endBin; i++)
+        if (full)
         {
-            double magnitude = _magnitudes[i];
-            focusedEnergy += magnitude * magnitude;
-            if (!full || i is >= 2 and <= 6)
+            // Full-mix level comes from the time-domain energy. Its drive only follows the kick bins.
+            for (int i = 2; i <= 6; i++)
+                drive = Math.Max(drive, _magnitudes[i]);
+        }
+        else
+        {
+            for (int i = firstBin; i < endBin; i++)
+            {
+                double magnitude = _magnitudes[i];
+                focusedEnergy += magnitude * magnitude;
                 drive = Math.Max(drive, magnitude);
+            }
         }
 
         // A Hann window spreads a sinusoid's power over nearby bins. This scale matches time-domain RMS.
@@ -175,22 +232,23 @@ internal sealed class AudioAnalyzer
 
         double flux = 0;
         int activeBands = 0;
-        var bands = new float[BandCount];
+        var bands = publish ? new float[BandCount] : null;
         for (int i = 0; i < BandCount; i++)
         {
-            int start = Math.Max(firstBin, BandEdges[i]);
-            int end = Math.Min(endBin, Math.Max(BandEdges[i] + 1, BandEdges[i + 1]));
+            int bandStart = BandEdges[i];
+            int bandEnd = Math.Max(bandStart + 1, BandEdges[i + 1]);
+            int start = Math.Max(firstBin, bandStart);
+            int end = Math.Min(endBin, bandEnd);
             if (start >= end)
                 continue;
             activeBands++;
-            double magnitude = 0;
-            for (int j = start; j < end; j++)
-                magnitude = Math.Max(magnitude, _magnitudes[j]);
-
-            double weighted = Math.Log(1 + 30 * magnitude);
+            var (magnitude, weighted) = !full && start == bandStart && end == bandEnd
+                ? _fullBandPeaks[i] : MeasureBand(start, end);
+            if (full)
+                _fullBandPeaks[i] = (magnitude, weighted);
             flux += Math.Max(0, weighted - history.PreviousBands[i]) * (full && i < 8 ? 1.35 : 1);
             history.PreviousBands[i] = weighted;
-            if (rms >= 0.0004)
+            if (bands != null && rms >= 0.0004)
                 bands[i] = (float)Math.Clamp(Math.Log(1 + magnitude * gain * 36) / 2.6, 0, 1);
         }
 
@@ -206,9 +264,17 @@ internal sealed class AudioAnalyzer
 
         history.FluxAverage += (onset - history.FluxAverage) * 0.045;
         history.DriveAverage += (drive - history.DriveAverage) * 0.075;
-        return new AudioSignal(
+        return bands == null ? null : new AudioSignal(
             rms < 0.0004 ? 0 : (float)Math.Clamp(Math.Sqrt(rms * gain * 2.8), 0, 1),
             rms < 0.0004 ? 0 : (float)Math.Clamp(Math.Sqrt(drive * gain * 1.7), 0, 1),
             bands, history.LastBeat, history.BeatStrength, range);
+    }
+
+    private (double Magnitude, double Weighted) MeasureBand(int start, int end)
+    {
+        double magnitude = 0;
+        for (int i = start; i < end; i++)
+            magnitude = Math.Max(magnitude, _magnitudes[i]);
+        return (magnitude, Math.Log(1 + 30 * magnitude));
     }
 }

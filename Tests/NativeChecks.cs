@@ -57,7 +57,8 @@ internal static partial class Program
             bool opaque = true;
             for (int i = 0; i < 5; i++)
             {
-                opaque &= capture.ReadPixels(pixels) && Enumerable.Range(0, 48 * 28).All(p => pixels[p * 4 + 3] == 255);
+                opaque &= capture.ReadPixels(pixels, retainPreviousPixels: true)
+                    && Enumerable.Range(0, 48 * 28).All(p => pixels[p * 4 + 3] == 255);
                 Thread.Sleep(20);
             }
             Check(opaque, "Native capture publishes opaque BGRA frames");

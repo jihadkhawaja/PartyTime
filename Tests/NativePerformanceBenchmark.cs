@@ -25,7 +25,7 @@ internal static partial class Program
                     int width = (int)Math.Round(screen.Bounds.Width * scale), height = (int)Math.Round(screen.Bounds.Height * scale);
                     using var capture = new DesktopCapture(screen, width, height, preferGpu: gpu);
                     byte[] pixels = new byte[width * height * 4];
-                    for (int i = 0; i < 6; i++) { capture.ReadPixels(pixels); Thread.Sleep(20); }
+                    for (int i = 0; i < 6; i++) { capture.ReadPixels(pixels, retainPreviousPixels: true); Thread.Sleep(20); }
                     const int count = 60;
                     double[] work = new double[count], cadence = new double[count - 1];
                     long allocated = GC.GetAllocatedBytesForCurrentThread(), start = Stopwatch.GetTimestamp(), previous = start;
@@ -38,7 +38,7 @@ internal static partial class Program
                         long before = Stopwatch.GetTimestamp(), version = capture.Version;
                         if (i > 0) cadence[i - 1] = Stopwatch.GetElapsedTime(previous, before).TotalMilliseconds;
                         previous = before;
-                        if (capture.ReadPixels(pixels)) available++;
+                        if (capture.ReadPixels(pixels, retainPreviousPixels: true)) available++;
                         if (version != capture.Version) updated++;
                         work[i] = Stopwatch.GetElapsedTime(before).TotalMilliseconds;
                     }

@@ -62,11 +62,12 @@ internal static partial class Program
     {
         var current = new VisualizerSettings { Focus = FrequencyFocus.Custom, LowHz = 100, HighHz = 900,
             Response = 135, FrameRate = OverlayFrameRate.Fps60, Images = [new() { Path = "keep.png" }] };
-        Check(VisualPresets.All.Length >= 8 && VisualPresets.All.Select(p => p.Name).Distinct().Count() == VisualPresets.All.Length,
-            "The preset library contains eight distinct looks");
+        Check(VisualPresets.All.Length >= 12 && VisualPresets.All.Select(p => p.Name).Distinct().Count() == VisualPresets.All.Length,
+            "The preset library includes four distinct immersion looks");
+        int galleryHeight = (VisualPresets.All.Length + 1) / 2 * 240;
         var gallery = new DrawingControl(context =>
         {
-            context.DrawRectangle(new SolidColorBrush(Color.FromRgb(16, 14, 25)), null, new Rect(0, 0, 800, 960));
+            context.DrawRectangle(new SolidColorBrush(Color.FromRgb(16, 14, 25)), null, new Rect(0, 0, 800, galleryHeight));
             for (int i = 0; i < VisualPresets.All.Length; i++)
             {
                 using var translation = context.PushTransform(Matrix.CreateTranslation(i % 2 * 400, i / 2 * 240));
@@ -75,10 +76,23 @@ internal static partial class Program
                 using var content = context.PushTransform(Matrix.CreateTranslation(0, 28));
                 using var clip = context.PushClip(new Rect(0, 0, 400, 208));
                 var scene = new Scene();
-                scene.ApplySettings(VisualPresets.All[i].Apply(new()));
+                var look = VisualPresets.All[i].Apply(new());
+                scene.ApplySettings(look);
                 long now = Stopwatch.GetTimestamp();
                 for (int p = 0; p < 18; p++) scene.UpdatePointer(new Point(70 + p * 13, 105 + Math.Sin(p * 0.3) * 35), now - (17 - p) * Stopwatch.Frequency / 50);
-                scene.Update(MotionFrame(now), now, 0.1, null);
+                for (int frame = 0; frame < 18; frame++)
+                {
+                    long timestamp = now + frame * Stopwatch.Frequency / 10;
+                    var audio = MotionFrame(timestamp);
+                    if (look.MusicEffect == MusicEffect.SpectrumWaterfall)
+                    {
+                        var bands = Enumerable.Range(0, AudioAnalyzer.BandCount)
+                            .Select(band => (float)(0.40 + 0.25 * Math.Sin(band * 0.67 - frame * 0.38) + 0.18 * Math.Sin(band * 1.15)))
+                            .ToArray();
+                        audio = audio with { Full = audio.Full with { Bands = bands } };
+                    }
+                    scene.Update(audio, timestamp, 0.1, null);
+                }
                 scene.Draw(context, 400, 208);
             }
         });
@@ -89,7 +103,7 @@ internal static partial class Program
                 && applied.HighHz == 900 && applied.Response == 135 && applied.FrameRate == current.FrameRate,
                 $"{preset.Name} preserves images, audio focus, response, and frame rate");
         }
-        using var target = Render(gallery, 800, 960);
+        using var target = Render(gallery, 800, galleryHeight);
         Check(BitmapPixels.Read(target).Any(value => value != 0), "Every preset renders through Avalonia and Skia");
         SavePng(target, Path.Combine(Output, "preset-gallery.png"));
     }
@@ -133,6 +147,15 @@ internal static partial class Program
                 && Current(window).SampleEffectStrength == 75, "Pixelate shows hold and effect strength controls and saves the strength");
             effectPicker.SelectedIndex = (int)ScreenSampleBlend.Blur;
             Check(effectPicker.SelectedItem as string == "Blur" && strengthPanel.IsVisible, "The Screen tab exposes Blur with effect strength");
+            window.FindControl<ComboBox>("MusicEffectPicker")!.SelectedIndex = (int)MusicEffect.StageBeams;
+            window.FindControl<ComboBox>("MusicReactionPicker")!.SelectedIndex = (int)AudioReaction.High;
+            window.FindControl<Slider>("MusicStrengthSlider")!.Value = 76;
+            window.FindControl<CheckBox>("AmbientLightingToggle")!.IsChecked = true;
+            window.FindControl<CheckBox>("AmbientScreenColorsToggle")!.IsChecked = true;
+            window.FindControl<CheckBox>("CinemaVignetteToggle")!.IsChecked = true;
+            Check(Current(window) is { MusicEffect: MusicEffect.StageBeams, MusicReaction: AudioReaction.High, MusicStrength: 76,
+                UsesAmbientScreenColors: true, CinemaVignette: true }, "Immersion controls update independent lighting and music layers");
+            Check(!window.FindControl<CheckBox>("PreviewLiveToggle")!.IsEnabled, "Live audio preview is available during an active party");
             window.Show();
             Dispatcher.UIThread.RunJobs();
             var tabs = window.GetVisualDescendants().OfType<TabControl>().First();

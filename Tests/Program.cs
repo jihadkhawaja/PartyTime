@@ -41,7 +41,7 @@ internal static partial class Program
             string image = CreateImage();
             CheckScene(image); CheckImagePlacement(image); CheckChromaKey();
             CheckSkiaRendering(image);
-            CheckMotion(); CheckScreenSamples(); CheckScreenPerformance(); CheckNewScreenEffects(); CheckPresets(); CheckTransparency(image); CheckControls(image); CheckBulkControls(image);
+            CheckMotion(); CheckImmersion(); CheckScreenSamples(); CheckScreenPerformance(); CheckNewScreenEffects(); CheckPresets(); CheckTransparency(image); CheckControls(image); CheckBulkControls(image);
             Console.WriteLine($"Passed {_checks} checks. Rendered checks: {Output}");
             return 0;
         }
@@ -85,6 +85,27 @@ internal static partial class Program
         var silent = new AudioAnalyzer().Push(new byte[4096 * 8], Stopwatch.GetTimestamp(), FrequencyRange.Full)!;
         Check(new[] { silent.Focused, silent.Full, silent.Low, silent.Mid, silent.High }.All(signal => signal.Level == 0 && signal.Bands.All(band => band == 0)),
             "Silence clears every frequency response");
+
+        var stereo = new float[8192];
+        for (int i = 0; i < stereo.Length / 2; i++)
+        {
+            double time = Math.Tau * i / AudioAnalyzer.SampleRate;
+            stereo[i * 2] = (float)(0.18 * Math.Sin(time * 95) + 0.07 * Math.Sin(time * 2200));
+            stereo[i * 2 + 1] = (float)(0.13 * Math.Sin(time * 345) + 0.04 * Math.Sin(time * 8100));
+        }
+        var packet = MemoryMarshal.AsBytes(stereo.AsSpan());
+        long now = Stopwatch.GetTimestamp();
+        var whole = new AudioAnalyzer().Push(packet, now, FrequencyRange.Vocals)!;
+        var splitAnalyzer = new AudioAnalyzer();
+        AudioFrame? split = null;
+        // Split on FFT hops with the same packet timestamp; the state must see every hop either way.
+        const int hopBytes = 512 * 2 * sizeof(float);
+        for (int offset = 0; offset < packet.Length; offset += hopBytes)
+            split = splitAnalyzer.Push(packet.Slice(offset, hopBytes), now, FrequencyRange.Vocals);
+        var allSignals = new[] { whole.Focused, whole.Full, whole.Low, whole.Mid, whole.High };
+        var splitSignals = new[] { split!.Focused, split.Full, split.Low, split.Mid, split.High };
+        Check(allSignals.Zip(splitSignals).All(pair => (pair.First with { Bands = pair.Second.Bands }) == pair.Second
+            && pair.First.Bands.SequenceEqual(pair.Second.Bands)), "Publishing only the last hop preserves all band levels and onset state");
     }
 
 
@@ -328,6 +349,11 @@ internal static partial class Program
         public void DrawRoundedRectangle(IBrush? brush, IPen? pen, Rect bounds, double radius) => Shapes++;
         public void DrawEllipse(IBrush? brush, IPen? pen, Point center, double radius) { Shapes++; Centers.Add(center); }
         public void DrawLine(IPen pen, Point start, Point end) => Shapes++;
+        public void DrawOutlinedPolygon(ReadOnlySpan<Point> points, Color halo, double haloThickness, Color stroke, double thickness)
+        {
+            DrawPolygon(points, null, null);
+            DrawPolygon(points, null, null);
+        }
         public void DrawPolygon(ReadOnlySpan<Point> points, IBrush? brush, IPen? pen)
         {
             Shapes++;
@@ -335,6 +361,8 @@ internal static partial class Program
             if (brush != null) FilledPolygons++;
         }
         public void DrawCurve(Point start, ReadOnlySpan<(Point Control, Point End)> segments, IPen halo, IPen stroke) => Shapes++;
+        public void DrawHorizontalGradientCurve(Point start, ReadOnlySpan<(Point Control, Point End)> segments,
+            Color first, Color second, double thickness, Color halo, double haloThickness) => Shapes++;
     }
     private static Bitmap FromStraightPixels(byte[] pixels, int width, int height)
     {

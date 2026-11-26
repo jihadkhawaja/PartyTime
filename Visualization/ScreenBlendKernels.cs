@@ -1,6 +1,8 @@
 using System;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
 using PartyTime.Settings;
 
 namespace PartyTime.Visualization;
@@ -36,31 +38,87 @@ internal static class ScreenBlendKernels
     private static void Run<T>(ReadOnlySpan<byte> background, ReadOnlySpan<byte> sample, Span<byte> output,
         int width, int height, double zoom) where T : struct, IKernel
     {
-        var bg = MemoryMarshal.Cast<byte, uint>(background);
-        var held = MemoryMarshal.Cast<byte, uint>(sample);
-        var target = MemoryMarshal.Cast<byte, uint>(output);
         if (zoom == 1)
         {
-            int i = 0;
-            if (Vector.IsHardwareAccelerated)
-                for (; i <= output.Length - Vector<byte>.Count; i += Vector<byte>.Count)
-                    (T.Pixels(new Vector<byte>(background.Slice(i)), new Vector<byte>(sample.Slice(i))) | Alpha).CopyTo(output.Slice(i));
-            for (int pixel = i / 4; pixel < target.Length; pixel++) target[pixel] = T.Pixel(bg[pixel], held[pixel]) | 0xff000000u;
+            BlendSpan<T>(background, sample, output);
             return;
         }
-        int[]? rented = width > 2048 ? System.Buffers.ArrayPool<int>.Shared.Rent(width) : null;
-        Span<int> columns = rented != null ? rented.AsSpan(0, width) : stackalloc int[width];
+
+        bool readsBackground = typeof(T) != typeof(Normal) && typeof(T) != typeof(Negative);
+        bool vectorize = readsBackground && Vector.IsHardwareAccelerated && width >= Vector<uint>.Count;
+        bool gather = vectorize && Avx2.IsSupported && Vector<uint>.Count == Vector256<uint>.Count;
+        int scratchLength = vectorize && !gather ? checked(width * 2) : width;
+        int[]? rented = scratchLength > 2048 ? System.Buffers.ArrayPool<int>.Shared.Rent(scratchLength) : null;
+        Span<int> scratch = rented != null ? rented.AsSpan(0, scratchLength) : stackalloc int[scratchLength];
+        Span<int> columns = scratch[..width];
+        Span<uint> zoomedRow = MemoryMarshal.Cast<int, uint>(scratch[width..]);
+        var held = MemoryMarshal.Cast<byte, uint>(sample);
+        int rowBytes = width * 4;
         try
         {
             for (int x = 0; x < width; x++) columns[x] = Math.Clamp((int)((x - width / 2.0) / zoom + width / 2.0), 0, width - 1);
+            int previousSource = -1;
             for (int y = 0; y < height; y++)
             {
-                int sy = Math.Clamp((int)((y - height / 2.0) / zoom + height / 2.0), 0, height - 1) * width;
-                int row = y * width;
-                for (int x = 0; x < width; x++) target[row + x] = T.Pixel(bg[row + x], held[sy + columns[x]]) | 0xff000000u;
+                int source = Math.Clamp((int)((y - height / 2.0) / zoom + height / 2.0), 0, height - 1);
+                var sourceRow = held.Slice(source * width, width);
+                var backgroundRow = background.Slice(y * rowBytes, rowBytes);
+                var outputRow = output.Slice(y * rowBytes, rowBytes);
+                if (gather)
+                    BlendGatheredRow<T>(backgroundRow, sourceRow, columns, outputRow);
+                else if (vectorize)
+                {
+                    // Resample exactly as in the scalar path, then blend a contiguous row with SIMD.
+                    if (source != previousSource)
+                        for (int x = 0; x < width; x++) zoomedRow[x] = sourceRow[columns[x]];
+                    BlendSpan<T>(backgroundRow, MemoryMarshal.AsBytes(zoomedRow), outputRow);
+                    previousSource = source;
+                }
+                else
+                {
+                    var bg = MemoryMarshal.Cast<byte, uint>(backgroundRow);
+                    var target = MemoryMarshal.Cast<byte, uint>(outputRow);
+                    for (int x = 0; x < width; x++)
+                        target[x] = T.Pixel(readsBackground ? bg[x] : 0, sourceRow[columns[x]]) | 0xff000000u;
+                }
             }
         }
         finally { if (rented != null) System.Buffers.ArrayPool<int>.Shared.Return(rented); }
+    }
+
+    private static unsafe void BlendGatheredRow<T>(ReadOnlySpan<byte> background, ReadOnlySpan<uint> source, ReadOnlySpan<int> columns, Span<byte> output)
+        where T : struct, IKernel
+    {
+        int x = 0;
+        ref int firstColumn = ref MemoryMarshal.GetReference(columns);
+        fixed (uint* pixels = source)
+        {
+            for (; x <= columns.Length - Vector256<int>.Count; x += Vector256<int>.Count)
+            {
+                var indices = Vector256.LoadUnsafe(ref firstColumn, (nuint)x);
+                var sample = Avx2.GatherVector256((int*)pixels, indices, 4).AsByte().AsVector();
+                int offset = x * 4;
+                (T.Pixels(new Vector<byte>(background.Slice(offset)), sample) | Alpha).CopyTo(output.Slice(offset));
+            }
+        }
+
+        var bg = MemoryMarshal.Cast<byte, uint>(background);
+        var target = MemoryMarshal.Cast<byte, uint>(output);
+        for (; x < columns.Length; x++)
+            target[x] = T.Pixel(bg[x], source[columns[x]]) | 0xff000000u;
+    }
+
+    private static void BlendSpan<T>(ReadOnlySpan<byte> background, ReadOnlySpan<byte> sample, Span<byte> output)
+        where T : struct, IKernel
+    {
+        int i = 0;
+        if (Vector.IsHardwareAccelerated)
+            for (; i <= output.Length - Vector<byte>.Count; i += Vector<byte>.Count)
+                (T.Pixels(new Vector<byte>(background.Slice(i)), new Vector<byte>(sample.Slice(i))) | Alpha).CopyTo(output.Slice(i));
+        var bg = MemoryMarshal.Cast<byte, uint>(background);
+        var held = MemoryMarshal.Cast<byte, uint>(sample);
+        var target = MemoryMarshal.Cast<byte, uint>(output);
+        for (int pixel = i / 4; pixel < target.Length; pixel++) target[pixel] = T.Pixel(bg[pixel], held[pixel]) | 0xff000000u;
     }
 
     private readonly struct Normal : IKernel
@@ -78,12 +136,7 @@ internal static class ScreenBlendKernels
         public static uint Pixel(uint b, uint s) => Math.Min(255u, (b & 255) + (s & 255))
             | (Math.Min(255u, ((b >> 8) & 255) + ((s >> 8) & 255)) << 8)
             | (Math.Min(255u, ((b >> 16) & 255) + ((s >> 16) & 255)) << 16);
-        public static Vector<byte> Pixels(Vector<byte> b, Vector<byte> s)
-        {
-            Vector.Widen(b, out Vector<ushort> bl, out Vector<ushort> bh); Vector.Widen(s, out Vector<ushort> sl, out Vector<ushort> sh);
-            var max = new Vector<ushort>(255);
-            return Vector.Narrow(Vector.Min(bl + sl, max), Vector.Min(bh + sh, max));
-        }
+        public static Vector<byte> Pixels(Vector<byte> b, Vector<byte> s) => Vector.AddSaturate(b, s);
     }
     private readonly struct Multiply : IKernel
     {

@@ -94,10 +94,11 @@ internal sealed class GpuScreenCapture : IDisposable
         return null;
     }
 
-    public unsafe bool TryReadPixels(Span<byte> pixels)
+    public unsafe bool TryReadPixels(Span<byte> pixels, bool previousPixelsValid)
     {
         Changed = UpdateFrame();
         if (!HasFrame) return false;
+        if (!Changed && previousPixelsValid) return true;
         var mapped = _readback.Map(MapOptions.Read);
         try
         {
